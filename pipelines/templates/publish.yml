@@ -1,0 +1,109 @@
+# ==============================================================================
+# Publish stage.
+#
+# Aggregates every scanner's raw output into a common model, generates a
+# combined HTML dashboard and a Markdown summary, then publishes the reports.
+#
+# IMPORTANT: this stage uses `condition: always()` so it runs even when an
+# earlier stage (SAST/MSDO/Deploy/DAST) fails or is skipped. Reports are never
+# lost because of a failing scanner.
+# ==============================================================================
+
+stages:
+  - stage: Publish
+    displayName: Publish reports
+    dependsOn: Build
+    condition: always()
+    pool:
+      vmImage: $(AgentImage)
+    jobs:
+      - job: PublishReports
+        displayName: Aggregate and publish reports
+        steps:
+          - checkout: self
+
+          - script: mkdir -p "$(RawReportsDirFull)" "$(HtmlReportsDirFull)" "$(SummaryReportsDirFull)"
+            displayName: Ensure reports directories
+            condition: succeededOrFailed()
+
+          # --- Download raw scanner output ------------------------------------
+          # Each download is best-effort: a missing artifact simply means that
+          # scanner did not produce output (or never ran).
+          - task: DownloadPipelineArtifact@2
+            displayName: Download TruffleHog output
+            continueOnError: true
+            inputs:
+              buildType: current
+              artifactName: $(TrufflehogArtifact)
+              targetPath: $(RawReportsDirFull)
+
+          - task: DownloadPipelineArtifact@2
+            displayName: Download Semgrep output
+            continueOnError: true
+            inputs:
+              buildType: current
+              artifactName: $(SemgrepArtifact)
+              targetPath: $(RawReportsDirFull)
+
+          - task: DownloadPipelineArtifact@2
+            displayName: Download MSDO output
+            continueOnError: true
+            inputs:
+              buildType: current
+              artifactName: $(MsdoArtifact)
+              targetPath: $(RawReportsDirFull)
+
+          - task: DownloadPipelineArtifact@2
+            displayName: Download ZAP output
+            continueOnError: true
+            inputs:
+              buildType: current
+              artifactName: $(ZapArtifact)
+              targetPath: $(RawReportsDirFull)
+
+          # --- Aggregate ------------------------------------------------------
+          - script: |
+              python3 "$(ScriptsDir)/aggregate.py" \
+                --raw "$(RawReportsDirFull)" \
+                --output "$(SummaryReportsDirFull)/combined.json"
+            displayName: Aggregate scanner findings
+            condition: succeededOrFailed()
+
+          - script: |
+              python3 "$(ScriptsDir)/generate_html.py" \
+                --combined "$(SummaryReportsDirFull)/combined.json" \
+                --output "$(HtmlReportsDirFull)/index.html"
+            displayName: Generate HTML dashboard
+            condition: and(succeededOrFailed(), eq(variables['PublishReports'], 'true'))
+
+          - script: |
+              python3 "$(ScriptsDir)/security_summary.py" \
+                --combined "$(SummaryReportsDirFull)/combined.json" \
+                --json "$(SummaryReportsDirFull)/summary.json" \
+                --markdown "$(SummaryReportsDirFull)/summary.md"
+            displayName: Generate summary
+            condition: and(succeededOrFailed(), eq(variables['PublishReports'], 'true'))
+
+          # --- Publish --------------------------------------------------------
+          - task: PublishPipelineArtifact@1
+            displayName: Publish artifact (reports-raw)
+            inputs:
+              targetPath: $(RawReportsDirFull)
+              artifactName: reports-raw
+              publishLocation: pipeline
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish artifact (reports-html)
+            condition: eq(variables['PublishReports'], 'true')
+            inputs:
+              targetPath: $(HtmlReportsDirFull)
+              artifactName: reports-html
+              publishLocation: pipeline
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish artifact (reports-summary)
+            condition: eq(variables['PublishReports'], 'true')
+            inputs:
+              targetPath: $(SummaryReportsDirFull)
+              artifactName: reports-summary
+              publishLocation: pipeline

@@ -1,0 +1,75 @@
+# ------------------------------------------------------------------------------
+# Deployment + DAST variables.
+#
+# All machine-specific settings for the Windows deployment VM live here so no
+# templates or jobs contain hardcoded paths/URLs. Every value in this file is
+# expected to be overridden per-environment (e.g. via a variable group or a
+# per-branch variable template).
+# ------------------------------------------------------------------------------
+
+variables:
+  # ------------------------------------------------------------- Deployment
+  # Azure DevOps Environment backed by the Windows VM(s).
+  - name: DeploymentEnvironment
+    value: vm-production
+
+  # Name of the VM resource inside the environment above. The Deploy and DAST
+  # stages run deployment jobs directly on this machine.
+  - name: VmResourceName
+    value: windows-vm
+
+  # Physical path on the VM where the application is deployed.
+  - name: SitePath
+    value: C:\site
+
+  # Public URL used to verify the application is reachable after deployment and
+  # as the DAST scan target. On the VM itself the app is reached via localhost.
+  - name: ApplicationUrl
+    value: http://localhost:5000
+
+  # Optional Windows service that hosts the application. Empty = not a service.
+  # The Deploy job stops/starts it when set.
+  - name: WindowsServiceName
+    value: ''
+
+  # Optional IIS site name. Empty = not hosted under IIS.
+  # The Deploy job stops/starts the site when set.
+  - name: IISSiteName
+    value: ''
+
+  # Optional command used to start a self-hosted application (e.g.
+  # 'dotnet WebSample.dll'). Empty = the app is started via the service or IIS
+  # settings above.
+  - name: StartCommand
+    value: dotnet WebSample.dll
+
+  # Seconds to keep polling ApplicationUrl before failing the Deploy job.
+  - name: WaitTimeoutSeconds
+    value: '300'
+
+  # Seconds between reachability probes.
+  - name: ProbeIntervalSeconds
+    value: '5'
+
+  # -------------------------------------------------------------------- DAST
+  # Fully qualified path to the pre-installed OWASP ZAP executable on the VM.
+  # ZAP is intentionally NOT installed/downloaded by this pipeline.
+  - name: ZapPath
+    value: C:\Program Files\ZAP\Zed Attack Proxy\zap.bat
+
+  # DAST scan target. Must come from a variable (never hardcoded).
+  - name: ZapTarget
+    value: $(ApplicationUrl)
+
+  # Overall timeout (seconds) for the ZAP scan, including spider + active scan.
+  - name: ZapTimeout
+    value: '600'
+
+  # ZAP daemon port used for the ZAP REST API.
+  - name: ZapApiPort
+    value: '8090'
+
+  # ------------------------------------------------------- Report publishing
+  # Set to false to skip HTML/summary generation and only publish raw reports.
+  - name: PublishReports
+    value: true

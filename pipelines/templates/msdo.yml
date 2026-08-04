@@ -1,0 +1,79 @@
+# ==============================================================================
+# MSDO stage.
+#
+# Runs Microsoft Security DevOps (a collection of Microsoft security tools) on
+# the repository and emits a consolidated SARIF file. MSDO only runs on
+# Windows, so this stage pins the Windows hosted image.
+#
+#   msdo -> reports/raw/msdo.sarif
+#
+# TODO: If the MicrosoftSecurityDevOps@1 task cannot be resolved, install the
+# 'Microsoft Security DevOps' extension in the Azure DevOps organization (or
+# keep the bootstrap install step below).
+# ==============================================================================
+
+stages:
+  - stage: MSDO
+    displayName: MSDO
+    dependsOn: SAST
+    pool:
+      vmImage: $(WindowsAgentImage)
+    jobs:
+      - job: MSDO
+        displayName: Microsoft Security DevOps
+        steps:
+          - checkout: self
+
+          # Install ------------------------------------------------------------
+          - powershell: |
+              $ErrorActionPreference = 'Stop'
+              $ProgressPreference = 'silentlyContinue'
+              Invoke-WebRequest -Uri https://aka.ms/install-azsdopackage `
+                -OutFile "$(Build.SourcesDirectory)/install-azsdopackage.ps1"
+              & "$(Build.SourcesDirectory)/install-azsdopackage.ps1" -installMode 'standard'
+            displayName: Install Microsoft Security DevOps
+
+          # Scan ---------------------------------------------------------------
+          - task: MicrosoftSecurityDevOps@1
+            displayName: Run MSDO scan
+            continueOnError: true
+            inputs:
+              command: run
+              policy: $(MsdoPolicy)
+              config: ''
+              tools: $(MsdoTools)
+              output: $(RawReportsDirFull)
+
+          # The exact SARIF file name produced by MSDO can vary between
+          # versions, so consolidate the first *.sarif to the canonical name.
+          - powershell: |
+              $ErrorActionPreference = 'SilentlyContinue'
+              New-Item -ItemType Directory -Force -Path "$(RawReportsDirFull)" | Out-Null
+              $sarif = Get-ChildItem -Path "$(RawReportsDirFull)" -Filter *.sarif -Recurse |
+                Select-Object -First 1
+              if ($sarif) {
+                Copy-Item $sarif.FullName "$(RawReportsDirFull)/$(MsdoSarifReport)" -Force
+                Write-Host "Consolidated MSDO SARIF to $(MsdoSarifReport)"
+              } else {
+                Write-Host "##vso[task.logissue type=warning]MSDO produced no SARIF output."
+              }
+            displayName: Consolidate MSDO SARIF
+            condition: succeededOrFailed()
+
+          # Archive (always, so output is never lost) --------------------------
+          - task: PublishPipelineArtifact@1
+            displayName: Archive results ($(MsdoArtifact))
+            condition: always()
+            inputs:
+              targetPath: $(RawReportsDirFull)
+              artifactName: $(MsdoArtifact)
+              publishLocation: pipeline
+
+          # Policy gate --------------------------------------------------------
+          - powershell: |
+              python "$(ScriptsDir)/policy_check.py" --file "$(RawReportsDirFull)/$(MsdoSarifReport)"
+            displayName: Policy gate (MSDO)
+            condition: always()
+            env:
+              FAIL_ON_CRITICAL: $(FailOnCritical)
+              FAIL_ON_HIGH: $(FailOnHigh)

@@ -1,0 +1,78 @@
+# ==============================================================================
+# Build stage.
+#
+# Responsibilities:
+#   - produce a single deployable artifact
+#
+# No security tooling runs here - security is handled by the SAST and MSDO
+# stages that follow.
+#
+# The artifact is produced one of two ways (see BuildMode in
+# pipelines/variables/build.yml):
+#   publish - `dotnet publish` the sample application (default)
+#   copy    - copy a directory verbatim, no compilation
+#
+# TODO: To build a real application instead of the sample, change BuildMode and
+# SampleProjectPath in pipelines/variables/build.yml. No template changes are
+# required.
+# ==============================================================================
+
+stages:
+  - stage: Build
+    displayName: Build
+    pool:
+      vmImage: $(AgentImage)
+    jobs:
+      - job: Build
+        displayName: Build artifact
+        steps:
+          - checkout: self
+
+          # Publish mode: build the (sample) application.
+          # Restore is a separate step so the publish below can use --no-restore.
+          - task: CmdLine@2
+            displayName: Restore dependencies ($(PublishFramework))
+            inputs:
+              script: dotnet restore "$(SampleProjectPath)"
+            workingDirectory: $(Build.SourcesDirectory)
+            condition: eq(variables['BuildMode'], 'publish')
+
+          - task: CmdLine@2
+            displayName: Publish application ($(BuildConfiguration))
+            inputs:
+              script: >-
+                dotnet publish "$(SampleProjectPath)"
+                --configuration "$(BuildConfiguration)"
+                --framework "$(PublishFramework)"
+                --output "$(Build.ArtifactStagingDirectory)/out"
+                --no-restore
+            workingDirectory: $(Build.SourcesDirectory)
+            condition: eq(variables['BuildMode'], 'publish')
+
+          # Fail the stage if publish produced nothing - the Deploy stage
+          # depends on this artifact being complete.
+          - script: |
+              set -e
+              test -f "$(Build.ArtifactStagingDirectory)/out/WebSample.dll" && \
+                echo "Publish output verified: WebSample.dll present"
+            displayName: Verify publish output
+            condition: eq(variables['BuildMode'], 'publish')
+
+          # Copy mode: package a directory without compiling.
+          - script: |
+              set -e
+              mkdir -p "$(Build.ArtifactStagingDirectory)/out"
+              tar -C "$(CopySourcePath)" \
+                  --exclude='.git' \
+                  --exclude='bin' \
+                  --exclude='obj' \
+                  -cf - . | tar -xf - -C "$(Build.ArtifactStagingDirectory)/out"
+            displayName: Copy source to staging
+            condition: eq(variables['BuildMode'], 'copy')
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish artifact ($(ArtifactName))
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)/out
+              artifactName: $(ArtifactName)
+              publishLocation: pipeline

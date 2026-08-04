@@ -1,0 +1,55 @@
+# ==============================================================================
+# Deploy stage.
+#
+# Deploys the artifact produced by the Build stage onto the Windows VM. Runs as
+# a deployment job against the Azure DevOps Environment -> VM resource, so the
+# tasks execute directly on the VM.
+#
+#   1. Download the artifact from the Build stage
+#   2. Run scripts/deploy.ps1 which:
+#        - stops the app (service or IIS site, when configured)
+#        - copies the new build output to <SitePath>
+#        - starts the app (service, IIS site, or StartCommand)
+#        - waits until <ApplicationUrl> is reachable
+#
+# Nothing machine-specific is hardcoded here - see
+# pipelines/variables/deployment.yml.
+# ==============================================================================
+
+stages:
+  - stage: Deploy
+    displayName: Deploy to Windows VM
+    dependsOn: MSDO
+    jobs:
+      - deployment: Deploy
+        displayName: Deploy to Windows VM
+        environment:
+          name: $(DeploymentEnvironment)
+          resourceType: VM
+          resourceName: $(VmResourceName)
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: DownloadPipelineArtifact@2
+                  displayName: Download artifact ($(ArtifactName))
+                  inputs:
+                    buildType: current
+                    artifactName: $(ArtifactName)
+                    targetPath: $(Pipeline.Workspace)/drop
+
+                - task: PowerShell@2
+                  displayName: Deploy to $(SitePath)
+                  inputs:
+                    filePath: $(System.DefaultWorkingDirectory)/pipelines/scripts/deploy.ps1
+                    arguments: >-
+                      -SitePath "$(SitePath)"
+                      -SourcePath "$(Pipeline.Workspace)/drop"
+                      -WindowsServiceName "$(WindowsServiceName)"
+                      -IISSiteName "$(IISSiteName)"
+                      -ApplicationUrl "$(ApplicationUrl)"
+                      -StartCommand "$(StartCommand)"
+                      -WaitTimeoutSeconds $(WaitTimeoutSeconds)
+                      -ProbeIntervalSeconds $(ProbeIntervalSeconds)

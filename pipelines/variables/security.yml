@@ -1,0 +1,83 @@
+# ------------------------------------------------------------------------------
+# Security pipeline variables (SAST + MSDO scanners).
+#
+# Every configurable value for the static analysis scanners lives here so the
+# scanner jobs stay free of magic strings. To add a new scanner later, create
+# one job template + one parser module and add its settings to this file.
+# ------------------------------------------------------------------------------
+
+variables:
+  # ---------------------------------------------------------------- Semgrep
+  # Semgrep ruleset to run. Either a built-in ruleset ('p/...') or a path to a
+  # rules file checked into the repository (see SemgrepConfigFile).
+  - name: SemgrepRules
+    value: p/security-audit
+
+  # Optional path to a Semgrep rules file. Leave empty to rely on SemgrepRules.
+  - name: SemgrepConfigFile
+    value: ''
+
+  # Semgrep version to install. Empty -> latest from PyPI.
+  - name: SemgrepVersion
+    value: ''
+
+  # ------------------------------------------------------------- TruffleHog
+  # Extra arguments passed to `trufflehog filesystem`. Empty by default.
+  - name: TrufflehogExtraArgs
+    value: ''
+
+  # TruffleHog version to install (used to build the GitHub release URL).
+  # TODO: bump to a recent release before production use.
+  - name: TrufflehogVersion
+    value: 3.63.10
+
+  # Git history depth scanned by TruffleHog ('' = full history).
+  - name: TrufflehogDepth
+    value: ''
+
+  # ------------------------------------------------------------------ MSDO
+  # Microsoft Security DevOps policy. 'GitHub' emits SARIF compatible with the
+  # code scanning format; 'none' disables the policy.
+  - name: MsdoPolicy
+    value: GitHub
+
+  # Tools executed by MSDO. Leave empty to use the MSDO default tool set.
+  - name: MsdoTools
+    value: ''
+
+  # ---------------------------------------------------------- Policy gates
+  # If a scanner finds findings at these severities the job FAILS and later
+  # stages (Deploy/DAST) are skipped. The Publish stage still runs via
+  # `condition: always()` so reports are never lost.
+  - name: FailOnCritical
+    value: true
+  - name: FailOnHigh
+    value: true
+
+  # Scanner report file names. These must match the files produced by the
+  # run-* step templates and consumed by the Python parsers.
+  - name: SemgrepJsonReport
+    value: semgrep.json
+  - name: SemgrepSarifReport
+    value: semgrep.sarif
+  - name: TrufflehogJsonReport
+    value: trufflehog.json
+  - name: MsdoSarifReport
+    value: msdo.sarif
+  - name: ZapJsonReport
+    value: zap.json
+  - name: ZapXmlReport
+    value: zap.xml
+  - name: ZapHtmlReport
+    value: zap.html
+
+  # Names of the pipeline artifacts published by each scanner job. The Publish
+  # stage downloads these by name, so keep them in sync if renamed.
+  - name: TrufflehogArtifact
+    value: trufflehog
+  - name: SemgrepArtifact
+    value: semgrep
+  - name: MsdoArtifact
+    value: msdo
+  - name: ZapArtifact
+    value: zap

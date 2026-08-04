@@ -1,0 +1,38 @@
+# ------------------------------------------------------------------------------
+# Build stage variables.
+#
+# The build stage does NOT compile the full repository. It packages a small
+# sample web application so that deployment and DAST have something real to
+# work with end-to-end. Point these variables at a real project when you want
+# to build a production application instead.
+# ------------------------------------------------------------------------------
+
+variables:
+  # Build configuration used when publishing the sample application.
+  - name: BuildConfiguration
+    value: Release
+
+  # Name of the pipeline artifact produced by the Build stage and consumed by
+  # the Deploy stage.
+  - name: ArtifactName
+    value: drop
+
+  # Path to the project that gets published. Change this (and BuildMode) when
+  # you want to build a real application.
+  - name: SampleProjectPath
+    value: src/WebSample/WebSample.csproj
+
+  # Target framework used for the sample publish. Matches the .NET SDK pinned
+  # in this repository's global.json.
+  - name: PublishFramework
+    value: net10.0
+
+  # How the Build stage produces its artifact:
+  #   publish -> dotnet publish <SampleProjectPath> (default)
+  #   copy    -> copy <CopySourcePath> verbatim (no compilation)
+  - name: BuildMode
+    value: publish
+
+  # Source path used when BuildMode == copy.
+  - name: CopySourcePath
+    value: $(Build.SourcesDirectory)

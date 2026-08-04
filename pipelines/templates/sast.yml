@@ -1,0 +1,155 @@
+# ==============================================================================
+# SAST stage.
+#
+# Runs the repository static-analysis scanners as independent jobs. The jobs
+# have no dependencies between them, so Azure DevOps runs them in parallel.
+#
+#   trufflehog  -> reports/raw/trufflehog.json
+#   semgrep     -> reports/raw/semgrep.json + reports/raw/semgrep.sarif
+#
+# Each job follows the same pattern:
+#   install -> run (continueOnError, so output is always archived)
+#           -> archive (PublishPipelineArtifact, always runs)
+#           -> policy (policy_check.py, fails job if FailOnCritical/FailOnHigh)
+#
+# The policy step runs on `always()` so a crashed scanner cannot silently pass.
+# If any job fails, Deploy/DAST are skipped; Publish still runs.
+# ==============================================================================
+
+stages:
+  - stage: SAST
+    displayName: SAST
+    dependsOn: Build
+    pool:
+      vmImage: $(AgentImage)
+    jobs:
+      # ------------------------------------------------------------------------
+      # TruffleHog: scan the repo for leaked secrets/credentials.
+      # ------------------------------------------------------------------------
+      - job: TruffleHog
+        displayName: TruffleHog secret scan
+        steps:
+          - checkout: self
+
+          # Install ------------------------------------------------------------
+          - script: |
+              set -e
+              VERSION="$(TrufflehogVersion)"
+              TMP_DIR=$(mktemp -d)
+              curl -sSL \
+                "https://github.com/trufflesecurity/trufflehog/releases/download/v${VERSION}/trufflehog_${VERSION}_linux_amd64.tar.gz" \
+                -o "${TMP_DIR}/trufflehog.tar.gz"
+              tar -xzf "${TMP_DIR}/trufflehog.tar.gz" -C "${TMP_DIR}"
+              sudo install "${TMP_DIR}/trufflehog" /usr/local/bin/trufflehog
+              rm -rf "${TMP_DIR}"
+              trufflehog --version
+            displayName: Install TruffleHog $(TrufflehogVersion)
+
+          # Scan ---------------------------------------------------------------
+          - script: |
+              set -e
+              mkdir -p "$(RawReportsDirFull)"
+
+              EXTRA_ARGS=""
+              if [ -n "$(TrufflehogExtraArgs)" ]; then
+                EXTRA_ARGS="$(TrufflehogExtraArgs)"
+              fi
+              if [ -n "$(TrufflehogDepth)" ]; then
+                EXTRA_ARGS="${EXTRA_ARGS} --depth=$(TrufflehogDepth)"
+              fi
+
+              # shellcheck disable=SC2086  # EXTRA_ARGS is intentionally word-split
+              trufflehog filesystem --json $EXTRA_ARGS "$(Build.SourcesDirectory)" \
+                > "$(RawReportsDirFull)/$(TrufflehogJsonReport)" || true
+            displayName: Run TruffleHog scan
+            continueOnError: true
+
+          # Archive (always, so output is never lost) --------------------------
+          - task: PublishPipelineArtifact@1
+            displayName: Archive results ($(TrufflehogArtifact))
+            condition: always()
+            inputs:
+              targetPath: $(RawReportsDirFull)
+              artifactName: $(TrufflehogArtifact)
+              publishLocation: pipeline
+
+          # Policy gate --------------------------------------------------------
+          - script: |
+              python3 "$(ScriptsDir)/policy_check.py" \
+                --file "$(RawReportsDirFull)/$(TrufflehogJsonReport)"
+            displayName: Policy gate (TruffleHog)
+            condition: always()
+            env:
+              FAIL_ON_CRITICAL: $(FailOnCritical)
+              FAIL_ON_HIGH: $(FailOnHigh)
+
+      # ------------------------------------------------------------------------
+      # Semgrep: static analysis, emits JSON + SARIF.
+      # ------------------------------------------------------------------------
+      - job: Semgrep
+        displayName: Semgrep static analysis
+        steps:
+          - checkout: self
+
+          # Install ------------------------------------------------------------
+          - task: UsePythonVersion@0
+            displayName: Use Python $(PythonVersion)
+            inputs:
+              versionSpec: $(PythonVersion)
+              addToPath: true
+
+          - script: |
+              set -e
+              python3 -m pip install --upgrade pip
+              if [ -z "$SEMGREP_VERSION" ]; then
+                python3 -m pip install --quiet semgrep
+              else
+                python3 -m pip install --quiet "semgrep==${SEMGREP_VERSION}"
+              fi
+              semgrep --version
+            displayName: Install Semgrep
+            env:
+              SEMGREP_VERSION: $(SemgrepVersion)
+
+          # Scan ---------------------------------------------------------------
+          - script: |
+              set -e
+              mkdir -p "$(RawReportsDirFull)"
+
+              CONFIG_ARGS=""
+              if [ -n "$(SemgrepConfigFile)" ]; then
+                CONFIG_ARGS="--config $(SemgrepConfigFile)"
+              else
+                CONFIG_ARGS="--config $(SemgrepRules)"
+              fi
+
+              semgrep $CONFIG_ARGS \
+                --json \
+                --output "$(RawReportsDirFull)/$(SemgrepJsonReport)" \
+                "$(Build.SourcesDirectory)" || true
+
+              semgrep $CONFIG_ARGS \
+                --sarif \
+                --output "$(RawReportsDirFull)/$(SemgrepSarifReport)" \
+                "$(Build.SourcesDirectory)" || true
+            displayName: Run Semgrep scan
+            continueOnError: true
+
+          # Archive (always, so output is never lost) --------------------------
+          - task: PublishPipelineArtifact@1
+            displayName: Archive results ($(SemgrepArtifact))
+            condition: always()
+            inputs:
+              targetPath: $(RawReportsDirFull)
+              artifactName: $(SemgrepArtifact)
+              publishLocation: pipeline
+
+          # Policy gate --------------------------------------------------------
+          - script: |
+              python3 "$(ScriptsDir)/policy_check.py" \
+                --file "$(RawReportsDirFull)/$(SemgrepJsonReport)"
+            displayName: Policy gate (Semgrep)
+            condition: always()
+            env:
+              FAIL_ON_CRITICAL: $(FailOnCritical)
+              FAIL_ON_HIGH: $(FailOnHigh)

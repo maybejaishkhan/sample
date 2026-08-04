@@ -1,0 +1,59 @@
+# ==============================================================================
+# Main Azure DevOps pipeline.
+#
+# This file is intentionally thin. It loads the variable templates and then
+# delegates every stage to a stage template under pipelines/templates/. No
+# business logic lives here - if you need to change behaviour, edit the
+# relevant stage template or the variable files.
+#
+# Stage flow (see templates/*.yml):
+#
+#   Build  ->  SAST (TruffleHog + Semgrep)  ->  MSDO  ->  Deploy  ->  DAST  ->  Publish
+#
+# Publish always runs (condition: always()) so reports are never lost, even
+# when a security stage fails.
+# ==============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+      - master
+      - develop
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+# ==============================================================================
+# Variables
+# ==============================================================================
+variables:
+  - template: variables/global.yml
+  - template: variables/build.yml
+  - template: variables/security.yml
+  - template: variables/deployment.yml
+
+# ==============================================================================
+# Stages
+# ==============================================================================
+stages:
+  # 1. Produce the deployment artifact (sample app only - see BuildMode).
+  - template: templates/build.yml
+
+  # 2. Static analysis (TruffleHog + Semgrep, run in parallel).
+  - template: templates/sast.yml
+
+  # 3. Microsoft Security DevOps (SARIF).
+  - template: templates/msdo.yml
+
+  # 4. Deploy the artifact to the Windows VM environment.
+  - template: templates/deploy.yml
+
+  # 5. Dynamic analysis (OWASP ZAP) against the deployed app, on the VM.
+  - template: templates/dast.yml
+
+  # 6. Aggregate + publish all reports (always runs).
+  - template: templates/publish.yml

@@ -1,0 +1,39 @@
+# ------------------------------------------------------------------------------
+# Global pipeline variables.
+#
+# These apply to every stage/job/step in the pipeline. Values that are specific
+# to a single concern (build, security, deployment) live in their own file:
+#
+#   build.yml       - build/artifact settings
+#   security.yml    - SAST / MSDO scanner settings
+#   deployment.yml  - VM deployment + DAST settings
+#
+# Only put settings here that are genuinely cross-cutting.
+# ------------------------------------------------------------------------------
+
+variables:
+  # Hosted image used by all agent-based jobs that can run on Linux.
+  - name: AgentImage
+    value: ubuntu-latest
+
+  # Hosted image used by jobs that require Windows (e.g. MSDO).
+  - name: WindowsAgentImage
+    value: windows-latest
+
+  # Python version used by the report aggregation scripts.
+  - name: PythonVersion
+    value: '3.11'
+
+  # Fully qualified locations of the report folders (used by scripts/tasks).
+  # Reports are written to the agent's artifact staging area - NOT into the
+  # repository - and published as pipeline artifacts by the Publish stage.
+  - name: RawReportsDirFull
+    value: $(Build.ArtifactStagingDirectory)/reports/raw
+  - name: HtmlReportsDirFull
+    value: $(Build.ArtifactStagingDirectory)/reports/html
+  - name: SummaryReportsDirFull
+    value: $(Build.ArtifactStagingDirectory)/reports/summary
+
+  # Where the Python aggregation scripts live (relative to the repo root).
+  - name: ScriptsDir
+    value: pipelines/scripts
