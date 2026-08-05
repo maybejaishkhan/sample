@@ -16,52 +16,48 @@ stages:
     displayName: DAST
     dependsOn: Deploy
     jobs:
-      - deployment: ZAP
+      - job: ZAP
         displayName: OWASP ZAP scan
-        environment:
-          name: $(DeploymentEnvironment)
-          resourceType: VM
-          resourceName: $(VmResourceName)
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - checkout: self
-
-                - powershell: |
-                    New-Item -ItemType Directory -Force -Path "$(RawReportsDirFull)" | Out-Null
-                  displayName: Ensure reports directory
-                  condition: succeededOrFailed()
-
-                - task: PowerShell@2
-                  displayName: Run ZAP scan against $(ZapTarget)
-                  continueOnError: true
-                  inputs:
-                    filePath: $(System.DefaultWorkingDirectory)/pipelines/scripts/zap_scan.ps1
-                    arguments: >-
-                      -TargetUrl "$(ZapTarget)"
-                      -OutputDirectory "$(RawReportsDirFull)"
-                      -ZapPath "$(ZapPath)"
-                      -ApiPort $(ZapApiPort)
-                      -TimeoutSeconds $(ZapTimeout)
-
-                # Archive (always, so output is never lost) --------------------
-                - task: PublishPipelineArtifact@1
-                  displayName: Archive results ($(ZapArtifact))
-                  condition: always()
-                  inputs:
-                    targetPath: $(RawReportsDirFull)
-                    artifactName: $(ZapArtifact)
-                    publishLocation: pipeline
-
-                # Policy gate --------------------------------------------------
-                # TODO: requires Python to be installed on the deployment VM. If it
-                # is not, move this gate to a hosted job that downloads the zap
-                # artifact instead.
-                - powershell: |
-                    python "$(ScriptsDir)/policy_check.py" --file "$(RawReportsDirFull)/$(ZapJsonReport)"
-                  displayName: Policy gate (ZAP)
-                  condition: always()
-                  env:
-                    FAIL_ON_CRITICAL: $(FailOnCritical)
-                    FAIL_ON_HIGH: $(FailOnHigh)
+        pool: $(VmPool)
+        steps:
+          - checkout: self
+  
+          - powershell: |
+              New-Item -ItemType Directory -Force -Path "$(RawReportsDirFull)" | Out-Null
+            displayName: Ensure reports directory
+            condition: succeededOrFailed()
+  
+          - task: PowerShell@2
+            displayName: Run ZAP scan against $(ZapTarget)
+            continueOnError: true
+            inputs:
+              filePath: $(System.DefaultWorkingDirectory)/pipelines/scripts/zap_scan.ps1
+              arguments: >-
+                -TargetUrl "$(ZapTarget)"
+                -OutputDirectory "$(RawReportsDirFull)"
+  
+                -ZapPath "$(ZapPath)"
+                -ApiPort $(ZapApiPort)
+                -TimeoutSeconds $(ZapTimeout)
+  
+          # Archive (always, so output is never lost) --------------------
+          - task: PublishPipelineArtifact@1
+            displayName: Archive results ($(ZapArtifact))
+  
+            condition: always()
+            inputs:
+              targetPath: $(RawReportsDirFull)
+              artifactName: $(ZapArtifact)
+              publishLocation: pipeline
+  
+          # Policy gate --------------------------------------------------
+          # TODO: requires Python to be installed on the deployment VM. If it
+          # is not, move this gate to a hosted job that downloads the zap
+          # artifact instead.
+          - powershell: |
+              python "$(ScriptsDir)/policy_check.py" --file "$(RawReportsDirFull)/$(ZapJsonReport)"
+            displayName: Policy gate (ZAP)
+            condition: always()
+            env:
+              FAIL_ON_CRITICAL: $(FailOnCritical)
+              FAIL_ON_HIGH: $(FailOnHigh)

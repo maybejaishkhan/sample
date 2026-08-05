@@ -9,14 +9,12 @@
 
 variables:
   # ------------------------------------------------------------- Deployment
-  # Azure DevOps Environment backed by the Windows VM(s).
-  - name: DeploymentEnvironment
-    value: vm-production
-
-  # Name of the VM resource inside the environment above. The Deploy and DAST
-  # stages run deployment jobs directly on this machine.
-  - name: VmResourceName
-    value: windows-vm
+  # Self-hosted agent pool the Deploy and DAST jobs run on. The agent must
+  # have ZAP installed for DAST (see ZapPath) and the application deployed by
+  # this stage. No Azure DevOps Environment/resource is required - Deploy and
+  # DAST are regular pool jobs, not deployment jobs.
+  - name: VmPool
+    value: cloud-poc
 
   # Physical path on the VM where the application is deployed.
   - name: SitePath

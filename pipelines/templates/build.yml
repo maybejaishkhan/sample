@@ -34,7 +34,7 @@ stages:
             displayName: Restore dependencies ($(PublishFramework))
             inputs:
               script: dotnet restore "$(SampleProjectPath)"
-            workingDirectory: $(Build.SourcesDirectory)
+              workingDirectory: $(Build.SourcesDirectory)
             condition: eq(variables['BuildMode'], 'publish')
 
           - task: CmdLine@2
@@ -46,7 +46,7 @@ stages:
                 --framework "$(PublishFramework)"
                 --output "$(Build.ArtifactStagingDirectory)/out"
                 --no-restore
-            workingDirectory: $(Build.SourcesDirectory)
+              workingDirectory: $(Build.SourcesDirectory)
             condition: eq(variables['BuildMode'], 'publish')
 
           # Fail the stage if publish produced nothing - the Deploy stage
