@@ -12,7 +12,7 @@
 stages:
   - stage: Publish
     displayName: Publish reports
-    dependsOn: Build
+    dependsOn: [SAST, MSDO, DAST]
     condition: always()
     pool:
       vmImage: $(AgentImage)
