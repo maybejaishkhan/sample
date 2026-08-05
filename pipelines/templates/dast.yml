@@ -35,7 +35,6 @@ stages:
               arguments: >-
                 -TargetUrl "$(ZapTarget)"
                 -OutputDirectory "$(RawReportsDirFull)"
-  
                 -ZapPath "$(ZapPath)"
                 -ApiPort $(ZapApiPort)
                 -TimeoutSeconds $(ZapTimeout)

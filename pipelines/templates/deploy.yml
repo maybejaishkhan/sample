@@ -35,7 +35,6 @@ stages:
                 -SourcePath "$(Pipeline.Workspace)/drop"
                 -WindowsServiceName "$(WindowsServiceName)"
                 -ApplicationUrl "$(ApplicationUrl)"
-
                 -StartCommand "$(StartCommand)"
                 -WaitTimeoutSeconds $(WaitTimeoutSeconds)
                 -ProbeIntervalSeconds $(ProbeIntervalSeconds)
