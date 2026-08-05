@@ -36,10 +36,10 @@ variables:
     value: ''
 
   # ------------------------------------------------------------------ MSDO
-  # Microsoft Security DevOps policy. 'GitHub' emits SARIF compatible with the
-  # code scanning format; 'none' disables the policy.
+  # Microsoft Security DevOps policy. Valid values for the Azure DevOps task:
+  # 'azuredevops', 'microsoft', or 'none'. 'none' disables the policy.
   - name: MsdoPolicy
-    value: GitHub
+    value: azuredevops
 
   # Tools executed by MSDO. Leave empty to use the MSDO default tool set.
   - name: MsdoTools

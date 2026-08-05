@@ -25,6 +25,10 @@ stages:
           - checkout: self
 
           # Scan ---------------------------------------------------------------
+          # The MSDO task publishes its SARIF to a pipeline artifact named
+          # 'CodeAnalysisLogs' (see artifactName below); it does NOT write into
+          # the reports directory. The step after the scan downloads that
+          # artifact and consolidates it to the canonical name.
           - task: MicrosoftSecurityDevOps@1
             displayName: Run MSDO scan
             continueOnError: true
@@ -33,14 +37,26 @@ stages:
               policy: $(MsdoPolicy)
               config: ''
               tools: $(MsdoTools)
-              output: $(RawReportsDirFull)
+              publish: true
+              artifactName: CodeAnalysisLogs
 
-          # The exact SARIF file name produced by MSDO can vary between
-          # versions, so consolidate the first *.sarif to the canonical name.
+          # Download the SARIF artifact back into the workspace. Best-effort:
+          # if the scan produced nothing, the artifact does not exist and this
+          # step fails silently.
+          - task: DownloadPipelineArtifact@2
+            displayName: Download MSDO SARIF (CodeAnalysisLogs)
+            continueOnError: true
+            inputs:
+              buildType: current
+              artifactName: CodeAnalysisLogs
+              targetPath: $(Pipeline.Workspace)/msdo
+
+          # The exact SARIF file name/layout inside the artifact can vary, so
+          # consolidate the first *.sarif to the canonical name.
           - powershell: |
               $ErrorActionPreference = 'SilentlyContinue'
               New-Item -ItemType Directory -Force -Path "$(RawReportsDirFull)" | Out-Null
-              $sarif = Get-ChildItem -Path "$(RawReportsDirFull)" -Filter *.sarif -Recurse |
+              $sarif = Get-ChildItem -Path "$(Pipeline.Workspace)/msdo" -Filter *.sarif -Recurse |
                 Select-Object -First 1
               if ($sarif) {
                 Copy-Item $sarif.FullName "$(RawReportsDirFull)/$(MsdoSarifReport)" -Force
