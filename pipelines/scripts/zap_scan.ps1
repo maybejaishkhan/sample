@@ -78,14 +78,14 @@ if (-not $java) {
     Write-Warning 'Java was not found on PATH. ZAP requires a Java runtime; install one (e.g. OpenJDK 17) on the VM.'
 }
 else {
-    # java writes its version to stderr; under $ErrorActionPreference = 'Stop'
-    # that would abort the script, so redirect it to a file first.
-    $javaVersionFile = Join-Path $OutputDirectory 'java-version.txt'
-    & $java.Source -version 2> $javaVersionFile
-    if (Test-Path $javaVersionFile) {
-        Get-Content $javaVersionFile | ForEach-Object { Write-Host "  java: $_" }
-        Remove-Item $javaVersionFile -Force -ErrorAction SilentlyContinue
-    }
+    # java writes its version to stderr. Windows PowerShell 5.1 treats native
+    # stderr as an error when $ErrorActionPreference = 'Stop', so temporarily
+    # relax it for this diagnostic.
+    $previousEap = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+    $javaVersion = (& $java.Source -version 2>&1 | Out-String).Trim()
+    $ErrorActionPreference = $previousEap
+    Write-Host "  java: $javaVersion"
 }
 
 # Capture the daemon's own output so a failed start is diagnosable. Fall back to
