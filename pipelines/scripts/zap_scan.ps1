@@ -69,14 +69,50 @@ Write-Host "Starting ZAP daemon from $ZapPath ..."
 # TODO: Replace `api.disablekey=true` with a proper API key (and store it as a
 # pipeline secret) before production use. Also consider network/scope config to
 # restrict what ZAP may crawl.
-$zapProcess = Start-Process -FilePath $ZapPath `
-    -ArgumentList @(
-        '-daemon',
-        '-host', $ApiHost,
-        '-port', "$ApiPort",
-        '-config', 'api.disablekey=true'
-    ) `
-    -PassThru -WindowStyle Hidden
+
+# ZAP needs a Java runtime (ZAP 2.15+ requires Java 11+, 2.16+ requires 17+).
+# Report it up front so a missing JRE fails with a clear message instead of a
+# silent 2-minute timeout.
+$java = Get-Command java -ErrorAction SilentlyContinue
+if (-not $java) {
+    Write-Warning 'Java was not found on PATH. ZAP requires a Java runtime; install one (e.g. OpenJDK 17) on the VM.'
+}
+else {
+    & $java.Source -version 2>&1 | ForEach-Object { Write-Host "  java: $_" }
+}
+
+# Capture the daemon's own output so a failed start is diagnosable. Fall back to
+# a plain launch if the redirect is not supported.
+$zapStdout = Join-Path $OutputDirectory 'zap-daemon.stdout.log'
+$zapStderr = Join-Path $OutputDirectory 'zap-daemon.stderr.log'
+# zap.bat references the ZAP jar with a relative path, so it must run with the
+# ZAP install directory as its working directory.
+$zapHome = Split-Path -Parent $ZapPath
+try {
+    $zapProcess = Start-Process -FilePath $ZapPath `
+        -ArgumentList @(
+            '-daemon',
+            '-host', $ApiHost,
+            '-port', "$ApiPort",
+            '-config', 'api.disablekey=true'
+        ) `
+        -WorkingDirectory $zapHome `
+        -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $zapStdout `
+        -RedirectStandardError $zapStderr
+}
+catch {
+    Write-Warning "Could not redirect ZAP output ($_); launching without redirect."
+    $zapProcess = Start-Process -FilePath $ZapPath `
+        -ArgumentList @(
+            '-daemon',
+            '-host', $ApiHost,
+            '-port', "$ApiPort",
+            '-config', 'api.disablekey=true'
+        ) `
+        -WorkingDirectory $zapHome `
+        -PassThru -WindowStyle Hidden
+}
 
 try {
     # --------------------------------------------------------------------------
@@ -95,6 +131,17 @@ try {
     } while (-not $apiReady -and (Get-Date) -lt $apiDeadline)
 
     if (-not $apiReady) {
+        # Surface the daemon's own output - it usually explains the failure.
+        $stderr = Get-Content $zapStderr -ErrorAction SilentlyContinue | Select-Object -Last 30
+        $stdout = Get-Content $zapStdout -ErrorAction SilentlyContinue | Select-Object -Last 30
+        if ($stderr) {
+            Write-Host '--- ZAP daemon stderr (last 30 lines) ---'
+            $stderr | ForEach-Object { Write-Host $_ }
+        }
+        if ($stdout) {
+            Write-Host '--- ZAP daemon stdout (last 30 lines) ---'
+            $stdout | ForEach-Object { Write-Host $_ }
+        }
         throw "ZAP REST API did not become ready at $apiBase within 2 minutes."
     }
     Write-Host "ZAP REST API is ready at $apiBase"
