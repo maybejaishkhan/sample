@@ -99,10 +99,27 @@ elseif ($StartCommand) {
     # TODO: For production, prefer a Windows service so the app survives
     # agent restarts and is supervised. Start-Process is used here so the sample
     # self-hosted app can run end-to-end.
+
+    # Pre-flight checks so a broken launch fails with a useful message instead of
+    # silently timing out in the reachability probe below.
+    if (-not (Test-Path (Join-Path $SitePath 'WebSample.dll'))) {
+        throw "Deployment payload in $SitePath does not contain WebSample.dll."
+    }
+    $dotnetExe = Get-Command dotnet -ErrorAction SilentlyContinue
+    if (-not $dotnetExe) {
+        throw "The 'dotnet' command was not found on PATH. Install the .NET runtime on the VM (or set StartCommand to the full path to dotnet.exe)."
+    }
+    Write-Host "Using dotnet: $($dotnetExe.Source)"
+    & $dotnetExe.Source --list-runtimes
+
+    $stdoutLog = Join-Path $SitePath 'app.stdout.log'
+    $stderrLog = Join-Path $SitePath 'app.stderr.log'
     Start-Process -FilePath 'cmd.exe' `
         -ArgumentList '/c', $StartCommand `
         -WorkingDirectory $SitePath `
-        -WindowStyle Hidden
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $stdoutLog `
+        -RedirectStandardError $stderrLog
 }
 
 # ----------------------------------------------------------------------------
@@ -126,6 +143,19 @@ if ($ApplicationUrl) {
     }
 
     if (-not $reachable) {
+        # Surface the app's own output - it usually explains why it is not up.
+        $stdoutLog = Join-Path $SitePath 'app.stdout.log'
+        $stderrLog = Join-Path $SitePath 'app.stderr.log'
+        $stderr = Get-Content $stderrLog -ErrorAction SilentlyContinue | Select-Object -Last 20
+        $stdout = Get-Content $stdoutLog -ErrorAction SilentlyContinue | Select-Object -Last 20
+        if ($stderr) {
+            Write-Host '--- app stderr (last 20 lines) ---'
+            $stderr | ForEach-Object { Write-Host $_ }
+        }
+        if ($stdout) {
+            Write-Host '--- app stdout (last 20 lines) ---'
+            $stdout | ForEach-Object { Write-Host $_ }
+        }
         throw "Application did not become reachable at $ApplicationUrl within $WaitTimeoutSeconds s."
     }
     Write-Host "Application is reachable at $ApplicationUrl"
