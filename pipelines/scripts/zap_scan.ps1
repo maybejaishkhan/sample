@@ -171,8 +171,29 @@ try {
     # --------------------------------------------------------------------------
     # 4. Active scan
     # --------------------------------------------------------------------------
-    Write-Host "Running active scan against $TargetUrl ..."
-    $scanStart = Invoke-RestMethod -Uri "$apiBase/JSON/ascan/action/scan/?url=$escapedUrl&recurse=true" -TimeoutSec 60
+    # ascan (and the report exports below) only accept URLs that exist in ZAP's
+    # site tree. The spider may store the root with or without a trailing slash,
+    # so resolve the exact node from the site tree instead of guessing.
+    $siteUrl = $TargetUrl
+    try {
+        $sites = Invoke-RestMethod -Uri "$apiBase/JSON/core/view/sites/" -TimeoutSec 30
+        $siteNode = @($sites.sites) | Where-Object { $_.TrimEnd('/') -eq $TargetUrl.TrimEnd('/') } |
+            Select-Object -First 1
+        if ($siteNode) {
+            $siteUrl = [string]$siteNode
+            Write-Host "Active scan target resolved to site node: $siteUrl"
+        }
+        else {
+            Write-Warning "Target $TargetUrl not found in ZAP site tree; scanning with the target URL as given."
+        }
+    }
+    catch {
+        Write-Warning "Could not list ZAP sites ($_); scanning with the target URL as given."
+    }
+    $siteUrlEscaped = [uri]::EscapeDataString($siteUrl)
+
+    Write-Host "Running active scan against $siteUrl ..."
+    $scanStart = Invoke-RestMethod -Uri "$apiBase/JSON/ascan/action/scan/?url=$siteUrlEscaped&recurse=true" -TimeoutSec 60
     $scanId = $scanStart.scan
 
     do {
@@ -188,13 +209,13 @@ try {
     # --------------------------------------------------------------------------
     # 5. Export reports
     # --------------------------------------------------------------------------
-    $jsonReport = Invoke-WebRequest -Uri "$apiBase/OTHER/core/other/jsonreport/?baseurl=$escapedUrl" -UseBasicParsing -TimeoutSec 120
+    $jsonReport = Invoke-WebRequest -Uri "$apiBase/OTHER/core/other/jsonreport/?baseurl=$siteUrlEscaped" -UseBasicParsing -TimeoutSec 120
     [System.IO.File]::WriteAllText((Join-Path $OutputDirectory $JsonReportName), $jsonReport.Content, [System.Text.Encoding]::UTF8)
 
-    $xmlReport = Invoke-WebRequest -Uri "$apiBase/OTHER/core/other/xmlreport/?baseurl=$escapedUrl" -UseBasicParsing -TimeoutSec 120
+    $xmlReport = Invoke-WebRequest -Uri "$apiBase/OTHER/core/other/xmlreport/?baseurl=$siteUrlEscaped" -UseBasicParsing -TimeoutSec 120
     [System.IO.File]::WriteAllText((Join-Path $OutputDirectory $XmlReportName), $xmlReport.Content, [System.Text.Encoding]::UTF8)
 
-    $htmlReport = Invoke-WebRequest -Uri "$apiBase/OTHER/core/other/htmlreport/?baseurl=$escapedUrl" -UseBasicParsing -TimeoutSec 120
+    $htmlReport = Invoke-WebRequest -Uri "$apiBase/OTHER/core/other/htmlreport/?baseurl=$siteUrlEscaped" -UseBasicParsing -TimeoutSec 120
     [System.IO.File]::WriteAllText((Join-Path $OutputDirectory $HtmlReportName), $htmlReport.Content, [System.Text.Encoding]::UTF8)
 
     Write-Host "Reports written to $OutputDirectory :"
