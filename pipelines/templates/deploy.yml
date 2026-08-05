@@ -8,6 +8,7 @@
 #   1. Download the artifact from the Build stage
 #   2. Run scripts/deploy.ps1 which:
 #        - stops the app (service or IIS site, when configured)
+stages:
   - stage: Deploy
     displayName: Deploy to Windows VM
     dependsOn: MSDO
