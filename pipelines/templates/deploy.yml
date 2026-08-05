@@ -7,7 +7,7 @@
 #
 #   1. Download the artifact from the Build stage
 #   2. Run scripts/deploy.ps1 which:
-#        - stops the app (service or IIS site, when configured)
+#        - stops the app (Windows service, when configured)
 stages:
   - stage: Deploy
     displayName: Deploy to Windows VM
@@ -34,7 +34,6 @@ stages:
                 -SitePath "$(SitePath)"
                 -SourcePath "$(Pipeline.Workspace)/drop"
                 -WindowsServiceName "$(WindowsServiceName)"
-                -IISSiteName "$(IISSiteName)"
                 -ApplicationUrl "$(ApplicationUrl)"
 
                 -StartCommand "$(StartCommand)"

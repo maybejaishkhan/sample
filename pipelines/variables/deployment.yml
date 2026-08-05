@@ -22,22 +22,18 @@ variables:
 
   # Public URL used to verify the application is reachable after deployment and
   # as the DAST scan target. On the VM itself the app is reached via localhost.
+  # Must match the port the app binds to (see the app's appsettings.json).
   - name: ApplicationUrl
-    value: http://localhost:80
+    value: http://localhost:5000
 
   # Optional Windows service that hosts the application. Empty = not a service.
   # The Deploy job stops/starts it when set.
   - name: WindowsServiceName
     value: ''
 
-  # Optional IIS site name. Empty = not hosted under IIS.
-  # The Deploy job stops/starts the site when set.
-  - name: IISSiteName
-    value: 'site'
-
   # Optional command used to start a self-hosted application (e.g.
-  # 'dotnet WebSample.dll'). Empty = the app is started via the service or IIS
-  # settings above.
+  # 'dotnet WebSample.dll'). Empty = the app is started via the Windows service
+  # setting above.
   - name: StartCommand
     value: dotnet WebSample.dll
 

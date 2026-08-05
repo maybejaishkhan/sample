@@ -30,7 +30,7 @@ pipelines/
 │   ├── global.yml             #   cross-cutting (agents, python, paths)
 │   ├── build.yml              #   build mode, artifact name, project path
 │   ├── security.yml           #   scanner versions/rules, policy gates
-│   └── deployment.yml         #   VM env, site path, service/IIS, ZAP
+│   └── deployment.yml         #   VM env, site path, service/self-hosted, ZAP
 ├── templates/                 # one file per stage; jobs + steps fully inline
 │   ├── build.yml              #   creates the deployment artifact
 │   ├── sast.yml               #   TruffleHog + Semgrep jobs (parallel)

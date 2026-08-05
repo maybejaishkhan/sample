@@ -3,13 +3,12 @@
     Deploys the pipeline artifact onto the Windows VM.
 
 .DESCRIPTION
-    Runs on the deployment VM. Stops the running application (Windows service or
-    IIS site, when configured), copies the new build output into SitePath,
-    starts the application again, and waits until it is reachable.
+    Runs on the deployment VM. Stops the running application (Windows service,
+    when configured), copies the new build output into SitePath, starts the
+    application again, and waits until it is reachable.
 
-    The application can be hosted three ways (mutually exclusive):
+    The application can be hosted two ways (mutually exclusive):
       * a Windows service  (WindowsServiceName)
-      * an IIS site        (IISSiteName)
       * a self-hosted app  (StartCommand, e.g. "dotnet WebSample.dll")
 
 .PARAMETER SitePath
@@ -21,9 +20,6 @@
 
 .PARAMETER WindowsServiceName
     Name of the Windows service hosting the app. Empty = not a service.
-
-.PARAMETER IISSiteName
-    Name of the IIS site hosting the app. Empty = not IIS.
 
 .PARAMETER ApplicationUrl
     URL probed after deployment to confirm the app is reachable. Empty = skip.
@@ -46,7 +42,6 @@ param(
     [string]$SourcePath,
 
     [string]$WindowsServiceName = '',
-    [string]$IISSiteName = '',
     [string]$ApplicationUrl = '',
     [string]$StartCommand = '',
     [int]$WaitTimeoutSeconds = 300,
@@ -71,22 +66,6 @@ if ($WindowsServiceName) {
     }
     else {
         Write-Host "Windows service '$WindowsServiceName' is not present or already stopped."
-    }
-}
-
-if ($IISSiteName) {
-    try {
-        Import-Module WebAdministration -ErrorAction Stop
-        if (Test-Path "IIS:\Sites\$IISSiteName") {
-            Write-Host "Stopping IIS site: $IISSiteName"
-            Stop-Website -Name $IISSiteName
-        }
-        else {
-            Write-Host "IIS site '$IISSiteName' not found; nothing to stop."
-        }
-    }
-    catch {
-        Write-Warning "Could not stop IIS site '$IISSiteName': $_"
     }
 }
 
@@ -115,21 +94,9 @@ if ($WindowsServiceName) {
         Start-Service -Name $WindowsServiceName
     }
 }
-elseif ($IISSiteName) {
-    try {
-        Import-Module WebAdministration -ErrorAction Stop
-        if (Test-Path "IIS:\Sites\$IISSiteName") {
-            Write-Host "Starting IIS site: $IISSiteName"
-            Start-Website -Name $IISSiteName
-        }
-    }
-    catch {
-        Write-Warning "Could not start IIS site '$IISSiteName': $_"
-    }
-}
 elseif ($StartCommand) {
     Write-Host "Starting application: $StartCommand (workdir $SitePath)"
-    # TODO: For production, prefer a Windows service or IIS so the app survives
+    # TODO: For production, prefer a Windows service so the app survives
     # agent restarts and is supervised. Start-Process is used here so the sample
     # self-hosted app can run end-to-end.
     Start-Process -FilePath 'cmd.exe' `
