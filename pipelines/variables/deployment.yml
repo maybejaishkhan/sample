@@ -26,16 +26,19 @@ variables:
   - name: ApplicationUrl
     value: http://localhost:5000
 
-  # Optional Windows service that hosts the application. Empty = not a service.
-  # The Deploy job stops/starts it when set.
+  # Windows service that hosts the application. The Deploy job stops/starts it
+  # around the file copy. The app MUST be registered as a service on the VM
+  # (e.g. via NSSM): a plain Start-Process from the Deploy job is killed when
+  # the job ends (the agent terminates its per-job process tree), so the app
+  # would not survive until the DAST stage.
   - name: WindowsServiceName
-    value: ''
+    value: WebSample
 
   # Optional command used to start a self-hosted application (e.g.
   # 'dotnet WebSample.dll'). Empty = the app is started via the Windows service
   # setting above.
   - name: StartCommand
-    value: dotnet WebSample.dll
+    value: ''
 
   # Seconds to keep polling ApplicationUrl before failing the Deploy job.
   - name: WaitTimeoutSeconds
