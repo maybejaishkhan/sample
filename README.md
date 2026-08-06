@@ -9,7 +9,7 @@ dynamically-scans a small sample web application on a Windows VM.
 | ----------------------- | ------------------------------------------------------------------ |
 | `pipelines/`            | The Azure DevOps pipeline (see `pipelines/README.md` for details)  |
 | `src/WebSample/`        | Sample ASP.NET Core app built by the Build stage and deployed to the VM |
-| `src/security-tests/`   | Intentional test fixtures (fake secrets, unsafe code) used to validate the security stages |
+| `.hidden/security-tests/` | Intentional test fixtures (fake secrets, unsafe code) used to validate the security stages. Git-ignored (GitHub blocks malicious content), so copy onto the scanner workdir to scan them |
 
 ## Pipeline
 

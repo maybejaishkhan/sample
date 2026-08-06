@@ -1,0 +1,25 @@
+# Intentional security test fixtures. These contain fake secrets and
+# deliberately vulnerable code used to validate the SAST/MSDO stages.
+# They are NOT pushed to GitHub (GitHub blocks/defects on malicious content),
+# so they live in a git-ignored folder. Copy .hidden/security-tests onto a
+# scanner workdir if you need the pipeline to scan them.
+.hidden/
+
+# Scratch location used when copying the fixtures in for a test run. Ignored so
+# the malicious fixtures can never be accidentally committed/pushed.
+src/security-tests/
+
+# .NET build output
+bin/
+obj/
+*.user
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE / OS
+.vs/
+.idea/
+.DS_Store
+Thumbs.db

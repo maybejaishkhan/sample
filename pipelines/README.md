@@ -73,12 +73,23 @@ Before the first real run:
 
 ## Testing the security stage
 
-Intentional test fixtures live in `src/security-tests/`:
+Intentional test fixtures live in `.hidden/security-tests/` (git-ignored, since
+GitHub blocks malicious content):
 
-* `malicious.secrets` - fake secrets (Slack token, `postgres://` connection
-  string) in formats TruffleHog detects reliably.
-* `unsafe_code.py` - deliberate `eval()` and `subprocess(shell=True)` usage
-  that Semgrep's `p/security-audit` flags.
+* `secrets/*` - fake secrets (AWS keys, GitHub/Slack tokens, `postgres://`
+  connection strings, a PEM private key) in formats TruffleHog detects
+  reliably.
+* `code/*.py` - deliberate vulnerabilities (SQL injection, command injection,
+  XSS, path traversal, SSRF, unsafe `eval()`/`pickle`/`yaml.load`, weak
+  crypto, hardcoded credentials) that Semgrep's `p/security-audit` flags.
+* `malware/eicar.txt` - the EICAR anti-malware signature, caught by the MSDO
+  AntiMalware tool.
+* `web/login.html` - an insecure form (no CSRF, password autocomplete).
+
+The fixtures are not checked out by `checkout: self` because they are
+git-ignored. To scan them in a pipeline run, copy `.hidden/security-tests/`
+onto the agent/VM workdir first (e.g. place them in
+`$(Build.SourcesDirectory)/security-tests` before the SAST stage runs).
 
 With the default gates (`FailOnCritical`/`FailOnHigh` = true) the Semgrep job
 finds an ERROR/high finding, so the **build fails** at the SAST stage - while
