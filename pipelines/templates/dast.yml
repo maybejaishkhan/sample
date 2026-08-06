@@ -40,9 +40,12 @@ stages:
                 -TimeoutSeconds $(ZapTimeout)
   
           # Archive (always, so output is never lost) --------------------
+          # continueOnError: re-running a stage tries to publish the same
+          # artifact name again, which Azure rejects ("already exists").
           - task: PublishPipelineArtifact@1
             displayName: Archive results ($(ZapArtifact))
-  
+            continueOnError: true
+
             condition: always()
             inputs:
               targetPath: $(RawReportsDirFull)
@@ -50,9 +53,11 @@ stages:
               publishLocation: pipeline
   
           # Policy gate --------------------------------------------------
-          # TODO: requires Python to be installed on the deployment VM. If it
-          # is not, move this gate to a hosted job that downloads the zap
-          # artifact instead.
+          # Requires Python to be visible to the agent. If the agent runs as
+          # Local System (e.g. so it can control the app service), a per-user
+          # Python install is not on its PATH - install machine-wide or add it
+          # to the system PATH. Alternative: move this gate to a hosted job
+          # that downloads the zap artifact.
           - powershell: |
               python "$(ScriptsDir)/policy_check.py" --file "$(RawReportsDirFull)/$(ZapJsonReport)"
             displayName: Policy gate (ZAP)

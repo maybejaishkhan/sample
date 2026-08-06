@@ -65,9 +65,12 @@ stages:
             continueOnError: true
 
           # Archive (always, so output is never lost) --------------------------
+          # continueOnError: re-running a stage would re-publish the same
+          # artifact name, which Azure rejects ("already exists").
           - task: PublishPipelineArtifact@1
             displayName: Archive results ($(TrufflehogArtifact))
             condition: always()
+            continueOnError: true
             inputs:
               targetPath: $(RawReportsDirFull)
               artifactName: $(TrufflehogArtifact)
@@ -136,9 +139,12 @@ stages:
             continueOnError: true
 
           # Archive (always, so output is never lost) --------------------------
+          # continueOnError: re-running a stage would re-publish the same
+          # artifact name, which Azure rejects ("already exists").
           - task: PublishPipelineArtifact@1
             displayName: Archive results ($(SemgrepArtifact))
             condition: always()
+            continueOnError: true
             inputs:
               targetPath: $(RawReportsDirFull)
               artifactName: $(SemgrepArtifact)
