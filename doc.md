@@ -117,9 +117,9 @@ buried inside a stage template.
 | `/health` | Returns JSON `{ "status": "ok" }`         |
 | `/echo?q=...` | Reflects user input back to the browser (see warning below) |
 
-It is **self-hosted** (Kestrel) and binds to `http://0.0.0.0:5000`
-(`appsettings.json`). It runs on the VM with `dotnet WebSample.dll` from
-`C:\site`.
+It binds to `http://0.0.0.0:5000` (`appsettings.json`) and is hosted on the VM
+as a **Windows service** (service name `WebSample` — see `WindowsServiceName` in
+`deployment.yml`). The deployed files live in `C:\site`.
 
 > **Security note:** the `/echo` endpoint deliberately echoes user input without
 > escaping. This is an intentional sample flaw so that Semgrep and OWASP ZAP
@@ -157,7 +157,9 @@ Both jobs follow the same four-step pattern:
 
 1. **Install** the scanner.
 2. **Scan** the repository (`continueOnError: true`, so output is always archived).
-3. **Archive** results as a pipeline artifact (`condition: always()`).
+3. **Archive** results as a pipeline artifact (`condition: always()` and
+   `continueOnError: true`, so re-running a stage doesn't fail because the same
+   artifact name already exists).
 4. **Policy gate**: runs `policy_check.py`, which fails the job if critical/high
    findings exist (see section 7).
 
@@ -190,18 +192,22 @@ your Azure DevOps organization (Marketplace → Manage extensions). Without it t
 Downloads the `drop` artifact and runs `scripts/deploy.ps1`, which executes
 **directly on the VM** through the self-hosted agent:
 
-1. **Stop** the app (only if a Windows service is configured).
+1. **Stop** the Windows service (`WindowsServiceName`, e.g. `WebSample`).
 2. **Copy** the new build output into `C:\site` with `robocopy`.
-3. **Start** the app. Two hosting modes are supported (mutually exclusive):
-   - **Self-hosted app** (current config): `Start-Process dotnet WebSample.dll`
-     from `C:\site`.
-   - **Windows service**: stop/start a named service (`WindowsServiceName`).
+3. **Start** the Windows service again. (A self-hosted `StartCommand` mode also
+   exists for apps that are not registered as a service.)
 4. **Wait** until the app answers at `ApplicationUrl` (`http://localhost:5000`),
    polling every 5 seconds for up to 300 seconds.
 
-`deploy.ps1` includes pre-flight checks and logs the app's own stdout/stderr on
-failure, so a bad deployment fails with a useful message instead of a silent
-timeout.
+The app is hosted as a **Windows service** (registered on the VM, e.g. with
+NSSM) rather than a bare process, because a process started from the Deploy job
+is killed when the job ends — the agent terminates its per-job process tree — so
+a plain `Start-Process` would not survive until the DAST stage.
+
+`deploy.ps1` includes pre-flight checks, resets the stale `$LASTEXITCODE` left by
+`robocopy` (whose success codes are 0–7, i.e. non-zero), and logs the app's own
+stdout/stderr on failure, so a bad deployment fails with a useful message
+instead of a silent timeout.
 
 ### Stage 5 — DAST (`templates/dast.yml`, self-hosted Windows VM)
 
@@ -215,11 +221,14 @@ Flow inside `zap_scan.ps1`:
 2. Start ZAP in headless daemon mode (its REST API listens on port 8090).
 3. **Spider** the target to discover URLs.
 4. **Active scan** the discovered URLs.
-5. Export `zap.json`, `zap.xml`, and `zap.html`.
+5. Export `zap.json`, `zap.xml`, and `zap.html` (written with BOM-less UTF-8).
 6. Shut the daemon down.
 
 Results are archived as the `zap` artifact and a policy gate runs. Because the
-scan runs on the VM itself, the target is addressed as `localhost`/`127.0.0.1`.
+scan runs on the VM itself, the target is addressed as `localhost`/`127.0.0.1`
+(the script normalizes `localhost` to `127.0.0.1` for ZAP, which does not fall
+back to IPv4 the way .NET's HTTP client does). The script ends with an explicit
+`exit 0` so a stale `$LASTEXITCODE` from a native command cannot fail the job.
 
 ### Stage 6 — Publish (`templates/publish.yml`, hosted Linux agent)
 
@@ -291,8 +300,8 @@ Key items: `SemgrepRules` (`p/security-audit`), `SemgrepVersion` (empty = latest
 | `VmPool`             | `cloud-poc`                                       | Self-hosted agent pool on the VM         |
 | `SitePath`           | `C:\site`                                         | Where the app is deployed on the VM      |
 | `ApplicationUrl`     | `http://localhost:5000`                           | Reachability probe + DAST target         |
-| `WindowsServiceName` | *(empty)*                                         | Set to host the app as a Windows service |
-| `StartCommand`       | `dotnet WebSample.dll`                            | Command to launch the self-hosted app    |
+| `WindowsServiceName` | `WebSample`                                       | Windows service that hosts the app (stopped/started around the copy) |
+| `StartCommand`       | *(empty)*                                         | Self-hosted launch command; leave empty when using a Windows service |
 | `WaitTimeoutSeconds` | `300`                                             | Deploy probe timeout                     |
 | `ProbeIntervalSeconds`| `5`                                              | Deploy probe interval                    |
 | `ZapPath`            | `C:\Program Files\ZAP\Zed Attack Proxy\zap.bat`   | Pre-installed ZAP launcher on the VM     |
@@ -302,8 +311,9 @@ Key items: `SemgrepRules` (`p/security-audit`), `SemgrepVersion` (empty = latest
 | `PublishReports`     | `true`                                            | Set `false` to publish only raw reports  |
 
 **Hosting modes are mutually exclusive.** If `WindowsServiceName` is set, the
-app is stopped/started as a service. Otherwise `StartCommand` launches the
-self-hosted app. Leave one empty.
+app is stopped/started as a service; otherwise `StartCommand` launches a
+self-hosted app. Leave one empty. The service must already be registered on the
+VM (e.g. via NSSM) — the pipeline only stops/starts it, it does not create it.
 
 ---
 
@@ -371,12 +381,17 @@ The Deploy and DAST jobs run on the VM through a self-hosted agent. The VM needs
 2. **The .NET 10 runtime** (e.g. the ASP.NET Core Runtime or Hosting Bundle
    installer) so the deployed app can run. **Restart the agent service after
    installing** so the agent's environment picks up the new `PATH`.
-3. **OWASP ZAP** installed at `ZapPath`
+3. **The application registered as a Windows service** named `WebSample` (e.g.
+   via NSSM), running the app from `C:\site`. The pipeline only stops/starts this
+   service — it does not create it. See section 13 for example registration.
+4. **OWASP ZAP** installed at `ZapPath`
    (`C:\Program Files\ZAP\Zed Attack Proxy\zap.bat`), and a **Java runtime**
    (ZAP needs Java 11+, 17+ for newer versions) available on the agent's `PATH`.
-4. **Python** on the VM if the ZAP policy gate runs there (see the `dast.yml`
-   TODO — an alternative is to move that gate to a hosted job).
-5. Write access to `SitePath` (`C:\site`) for the agent account.
+5. **Python** on the VM for the ZAP policy gate. If the agent runs as Local
+   System, a per-user Python install is not on its `PATH` — install Python
+   machine-wide or add it to the system `PATH`. (Alternative: move that gate to
+   a hosted job that downloads the `zap` artifact.)
+6. Write access to `SitePath` (`C:\site`) for the agent account.
 
 ---
 
@@ -420,8 +435,9 @@ Practical guidance based on real issues hit during development.
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | `Application did not become reachable ... within 300s` and no app log | `dotnet` not on the agent's `PATH`, or the .NET runtime not installed | Install the .NET 10 runtime on the VM and restart the agent service |
-| IIS: `Cannot read configuration file due to insufficient permissions` | Agent account cannot read IIS config (`inetsrv\config`) | Run the agent with sufficient rights — or use the self-hosted app mode (simpler for this sample) |
-| App not reachable during DAST but reachable at deploy time | The self-hosted process died or was not supervised after the deploy job ended | Consider hosting the app as a Windows service |
+| Deploy job fails with a non-zero "Process completed with exit code X" even though the copy/start steps looked fine | `robocopy` leaves `$LASTEXITCODE` set (its success codes are 0–7, i.e. non-zero); the PowerShell task treats it as a failure | `deploy.ps1` resets `$LASTEXITCODE` after `robocopy` and ends with an explicit `exit 0` |
+| IIS: `Cannot read configuration file due to insufficient permissions` | Agent account cannot read IIS config (`inetsrv\config`) | Run the agent with sufficient rights — or host the app as a Windows service instead (simpler for this sample) |
+| App not reachable during DAST but reachable at deploy time | A process started from the Deploy job is killed when the job ends (the agent terminates its per-job process tree) | Register the app as a Windows service (`WindowsServiceName`) so it survives between stages |
 
 ### ZAP / DAST
 
@@ -431,6 +447,8 @@ Practical guidance based on real issues hit during development.
 | `NativeCommandError` from `java -version` | Windows PowerShell 5.1 treats native stderr as an error when `$ErrorActionPreference = 'Stop'` | The script temporarily relaxes EAP around the `java -version` call |
 | Spider completes but the site tree is empty; `ascan` says `url_not_found` | ZAP resolved `localhost` to IPv6 (`::1`) while the app binds IPv4 only, so ZAP never reached it | The script normalizes `localhost` → `127.0.0.1` and seeds the URL into the tree |
 | ZAP daemon never becomes ready on port 8090 | Java missing on the agent `PATH`, or ZAP can't start | Check the `java:` line and the dumped `zap-daemon.*.log` in the run output |
+| Reports exported but the parsers reject them (`json.decoder.JSONDecodeError` / XML parse error) | The report file starts with a UTF-8 BOM (`.NET`'s `Encoding.UTF8` adds one) | `zap_scan.ps1` writes reports with BOM-less UTF-8; the parsers also open files with `utf-8-sig` so a BOM is tolerated either way |
+| DAST job fails with a non-zero "Process completed" after the scan looked successful | A stale `$LASTEXITCODE` from a native command (e.g. `java`) | `zap_scan.ps1` ends with an explicit `exit 0` |
 
 ### General debugging tips
 
@@ -466,9 +484,113 @@ project (and keep `BuildMode = publish`). No template changes needed.
 
 ### Recommended production hardening (marked TODO in the code)
 
-- Run the deployed app as a **Windows service** so it survives restarts and is
-  supervised (the self-hosted `Start-Process` is only for the sample).
 - Replace ZAP's `api.disablekey=true` with a real API key stored as a pipeline
   secret, and restrict what ZAP may crawl.
 - Wire the HTML dashboard's file links to a real code host.
 - Bump scanner versions (e.g. `TrufflehogVersion`) to recent releases.
+
+> The sample app is already hosted as a Windows service (so it survives
+> restarts and is supervised) — the earlier "convert to a Windows service"
+> hardening item is done. The self-hosted `StartCommand` path remains available
+> for apps that are not registered as a service.
+
+---
+
+## 13. Setting up this pipeline for another repository
+
+The pipeline is intentionally reusable: it contains no repository-specific
+business logic, only variables. Reusing it for another repo is a
+configuration exercise. Here is the full checklist.
+
+### 1. Copy the pipeline into the target repo
+
+Copy the whole `pipelines/` directory (and `global.json` if you want to pin the
+same .NET SDK) into the target repository, keeping the folder layout intact.
+The pipeline resolves every path relative to the repo root, so it works from any
+repository as long as `pipelines/` is present.
+
+### 2. Point Azure DevOps at it
+
+In the target project: **Pipelines → New pipeline → Azure Repos Git → select the
+repo → Existing Azure Pipelines YAML file → `pipelines/azure-pipelines.yml`.**
+
+Then confirm the organization prerequisites from section 9:
+
+- The **Microsoft Security DevOps extension** is installed (MSDO stage).
+- Hosted agent pools (`ubuntu-latest`, `windows-latest`) are usable.
+- The **self-hosted VM pool** (`VmPool`, default `cloud-poc`) exists and the VM
+  has a registered agent.
+
+### 3. Adjust the build to your project
+
+In `pipelines/variables/build.yml`:
+
+| Variable            | Change it to                                             |
+|---------------------|----------------------------------------------------------|
+| `SampleProjectPath` | Your project path, e.g. `src/MyApp/MyApp.csproj`          |
+| `PublishFramework`  | Your target framework (e.g. `net8.0`)                     |
+| `BuildMode`         | Keep `publish`, or use `copy` to ship pre-built files     |
+| `ArtifactName`      | Keep `drop` unless you rename it consistently             |
+
+Two small code touches may be needed for a different app:
+
+- **`templates/build.yml`** verifies that `WebSample.dll` exists after publish.
+  Check for your assembly's name instead (or rename your output with
+  `<AssemblyName>` in the `.csproj`).
+- **`scripts/deploy.ps1`** pre-flight-checks for `WebSample.dll` in `C:\site`
+  before starting the app. Update that file name to match your app.
+
+If your repo's SDK differs, either adjust `global.json` or remove it.
+
+### 4. Point the deployment at your VM / service
+
+In `pipelines/variables/deployment.yml`:
+
+| Variable             | Change it to                                                     |
+|----------------------|------------------------------------------------------------------|
+| `VmPool`             | Your self-hosted agent pool name                                 |
+| `SitePath`           | Where the app is deployed on the VM (e.g. `C:\site`)             |
+| `ApplicationUrl`     | The URL your app listens on (must match the app's binding)       |
+| `WindowsServiceName` | The name of your app's Windows service on the VM                 |
+| `StartCommand`       | Leave empty when using a service; otherwise the launch command   |
+
+**Register the app as a Windows service on the VM** (the pipeline only
+stops/starts it). With NSSM, for example:
+
+```bat
+nssm install WebSample "C:\Program Files\dotnet\dotnet.exe" "C:\site\WebSample.dll"
+nssm set WebSample AppDirectory C:\site
+nssm start WebSample
+```
+
+Also make sure `ApplicationUrl` matches the port your application actually binds
+to — the Deploy probe and the ZAP scan both use it.
+
+### 5. Tune the scanners
+
+In `pipelines/variables/security.yml`:
+
+- `SemgrepRules` (e.g. `p/security-audit`) and `SemgrepConfigFile` for custom
+  rules.
+- `TrufflehogVersion` / `SemgrepVersion` — bump to recent releases.
+- `FailOnCritical` / `FailOnHigh` — the gate that breaks the build.
+- Report file names and artifact names normally stay at their defaults; change
+  them only if you also update the parsers in `scripts/parser/` and the
+  dispatcher in `scripts/shared/dispatch.py`.
+
+The SAST jobs scan the whole repository (`$(Build.SourcesDirectory)`), and the
+MSDO/ZAP stages are already target-agnostic, so no per-repo logic is needed
+there.
+
+### 6. Adjust triggers (optional)
+
+The default triggers in `azure-pipelines.yml` run on `main`/`master`/`develop`.
+Change them to match your repo's branch strategy.
+
+### 7. Verify
+
+1. Run the pipeline once with a low-impact change (or from the Pipelines page).
+2. Confirm Build produces the artifact, SAST/MSDO produce findings, Deploy
+   starts the service, DAST scans it, and Publish publishes `reports-*`.
+3. If a stage fails, see section 11 — the scripts are written to print the
+   actual error rather than fail silently.
