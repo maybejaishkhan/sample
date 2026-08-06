@@ -97,6 +97,17 @@ else {
     Write-Host "  java: $javaVersion"
 }
 
+# Pre-flight: confirm the app is actually reachable from the agent BEFORE
+# blaming ZAP. Deploy probes localhost:5000, but the app must still be up when
+# DAST runs minutes later.
+try {
+    $probe = Invoke-WebRequest -Uri $scanTarget -UseBasicParsing -TimeoutSec 10
+    Write-Host "Target is reachable from the agent (HTTP $([int]$probe.StatusCode))."
+}
+catch {
+    throw "Target $scanTarget is not reachable from the agent. The deployed app may not be running: $_"
+}
+
 # Capture the daemon's own output so a failed start is diagnosable. Fall back to
 # a plain launch if the redirect is not supported.
 $zapStdout = Join-Path $OutputDirectory 'zap-daemon.stdout.log'
@@ -194,6 +205,17 @@ try {
         }
         else {
             Write-Warning "Target $scanTarget not found in ZAP site tree. Sites in tree: $((@($sites.sites)) -join ', ')"
+            # Dump the daemon log - it usually shows ZAP's own connection errors.
+            $stderr = Get-Content $zapStderr -ErrorAction SilentlyContinue | Select-Object -Last 20
+            $stdout = Get-Content $zapStdout -ErrorAction SilentlyContinue | Select-Object -Last 20
+            if ($stderr) {
+                Write-Host '--- ZAP daemon stderr (last 20 lines) ---'
+                $stderr | ForEach-Object { Write-Host $_ }
+            }
+            if ($stdout) {
+                Write-Host '--- ZAP daemon stdout (last 20 lines) ---'
+                $stdout | ForEach-Object { Write-Host $_ }
+            }
         }
     }
     catch {
