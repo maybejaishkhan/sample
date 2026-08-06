@@ -25,7 +25,8 @@ _LEVEL_TO_SEVERITY = {
 
 def parse(path: str) -> List[Finding]:
     """Parse an MSDO SARIF report into :class:`Finding` objects."""
-    with open(path, "r", encoding="utf-8") as handle:
+    # utf-8-sig tolerates the UTF-8 BOM that .NET's Encoding.UTF8 writes.
+    with open(path, "r", encoding="utf-8-sig") as handle:
         data = json.load(handle)
 
     findings: List[Finding] = []

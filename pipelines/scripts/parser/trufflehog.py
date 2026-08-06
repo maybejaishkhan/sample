@@ -16,7 +16,8 @@ from shared.models import Finding
 
 
 def _load_items(path: str) -> List[dict]:
-    with open(path, "r", encoding="utf-8") as handle:
+    # utf-8-sig tolerates the UTF-8 BOM that .NET's Encoding.UTF8 writes.
+    with open(path, "r", encoding="utf-8-sig") as handle:
         content = handle.read().strip()
     if not content:
         return []

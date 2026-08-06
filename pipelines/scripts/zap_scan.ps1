@@ -249,14 +249,17 @@ try {
     # --------------------------------------------------------------------------
     # 5. Export reports
     # --------------------------------------------------------------------------
+    # Encoding.UTF8 would add a UTF-8 BOM, which JSON/XML parsers reject; use a
+    # BOM-less UTF-8 writer instead.
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     $jsonReport = Invoke-WebRequest -Uri "$apiBase/OTHER/core/other/jsonreport/?baseurl=$siteUrlEscaped" -UseBasicParsing -TimeoutSec 120
-    [System.IO.File]::WriteAllText((Join-Path $OutputDirectory $JsonReportName), $jsonReport.Content, [System.Text.Encoding]::UTF8)
+    [System.IO.File]::WriteAllText((Join-Path $OutputDirectory $JsonReportName), $jsonReport.Content, $utf8NoBom)
 
     $xmlReport = Invoke-WebRequest -Uri "$apiBase/OTHER/core/other/xmlreport/?baseurl=$siteUrlEscaped" -UseBasicParsing -TimeoutSec 120
-    [System.IO.File]::WriteAllText((Join-Path $OutputDirectory $XmlReportName), $xmlReport.Content, [System.Text.Encoding]::UTF8)
+    [System.IO.File]::WriteAllText((Join-Path $OutputDirectory $XmlReportName), $xmlReport.Content, $utf8NoBom)
 
     $htmlReport = Invoke-WebRequest -Uri "$apiBase/OTHER/core/other/htmlreport/?baseurl=$siteUrlEscaped" -UseBasicParsing -TimeoutSec 120
-    [System.IO.File]::WriteAllText((Join-Path $OutputDirectory $HtmlReportName), $htmlReport.Content, [System.Text.Encoding]::UTF8)
+    [System.IO.File]::WriteAllText((Join-Path $OutputDirectory $HtmlReportName), $htmlReport.Content, $utf8NoBom)
 
     Write-Host "Reports written to $OutputDirectory :"
     Write-Host "  - $JsonReportName"
