@@ -60,7 +60,16 @@ if (-not (Test-Path $ZapPath)) {
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
 $apiBase = "http://${ApiHost}:${ApiPort}"
-$escapedUrl = [uri]::EscapeDataString($TargetUrl)
+
+# ZAP's spider does not fall back to IPv4 like .NET's Invoke-WebRequest does.
+# On Windows 'localhost' commonly resolves to the IPv6 loopback (::1) first,
+# and this sample app only binds IPv4 (0.0.0.0), so the spider would silently
+# find nothing. Normalize localhost to 127.0.0.1 for the scan.
+$scanTarget = $TargetUrl -replace '(?i)^http://localhost(?=[:/]|$)', 'http://127.0.0.1'
+if ($scanTarget -ne $TargetUrl) {
+    Write-Host "Scan target normalized: $TargetUrl -> $scanTarget"
+}
+$escapedUrl = [uri]::EscapeDataString($scanTarget)
 
 # ----------------------------------------------------------------------------
 # 1. Start the ZAP daemon
@@ -158,7 +167,7 @@ try {
     # --------------------------------------------------------------------------
     # 3. Spider
     # --------------------------------------------------------------------------
-    Write-Host "Spidering $TargetUrl ..."
+    Write-Host "Spidering $scanTarget ..."
     $spiderStart = Invoke-RestMethod -Uri "$apiBase/JSON/spider/action/scan/?url=$escapedUrl" -TimeoutSec 60
     $spiderId = $spiderStart.scan
 
@@ -174,23 +183,32 @@ try {
     # ascan (and the report exports below) only accept URLs that exist in ZAP's
     # site tree. The spider may store the root with or without a trailing slash,
     # so resolve the exact node from the site tree instead of guessing.
-    $siteUrl = $TargetUrl
+    $siteUrl = $scanTarget
     try {
         $sites = Invoke-RestMethod -Uri "$apiBase/JSON/core/view/sites/" -TimeoutSec 30
-        $siteNode = @($sites.sites) | Where-Object { $_.TrimEnd('/') -eq $TargetUrl.TrimEnd('/') } |
+        $siteNode = @($sites.sites) | Where-Object { $_.TrimEnd('/') -eq $scanTarget.TrimEnd('/') } |
             Select-Object -First 1
         if ($siteNode) {
             $siteUrl = [string]$siteNode
             Write-Host "Active scan target resolved to site node: $siteUrl"
         }
         else {
-            Write-Warning "Target $TargetUrl not found in ZAP site tree; scanning with the target URL as given."
+            Write-Warning "Target $scanTarget not found in ZAP site tree. Sites in tree: $((@($sites.sites)) -join ', ')"
         }
     }
     catch {
         Write-Warning "Could not list ZAP sites ($_); scanning with the target URL as given."
     }
     $siteUrlEscaped = [uri]::EscapeDataString($siteUrl)
+
+    # Make sure the seed URL exists in the tree even if the spider found
+    # nothing; ascan refuses URLs that are not in the scan tree.
+    try {
+        $null = Invoke-RestMethod -Uri "$apiBase/JSON/core/action/accessUrl/?url=$escapedUrl" -TimeoutSec 60
+    }
+    catch {
+        Write-Warning "Could not seed $scanTarget into the ZAP site tree ($_)."
+    }
 
     Write-Host "Running active scan against $siteUrl ..."
     $scanStart = Invoke-RestMethod -Uri "$apiBase/JSON/ascan/action/scan/?url=$siteUrlEscaped&recurse=true" -TimeoutSec 60
