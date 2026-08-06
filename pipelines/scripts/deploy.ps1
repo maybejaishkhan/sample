@@ -82,6 +82,9 @@ $robocopyExit = $LASTEXITCODE
 if ($robocopyExit -ge 8) {
     throw "robocopy failed with exit code $robocopyExit"
 }
+# robocopy exits 0-7 on success; leaving $LASTEXITCODE set makes the PowerShell
+# task report this job as failed. Reset it so the script's own exit governs.
+$global:LASTEXITCODE = 0
 Write-Host "Files copied to $SitePath (robocopy exit code $robocopyExit)."
 
 # ----------------------------------------------------------------------------
@@ -162,3 +165,6 @@ if ($ApplicationUrl) {
 }
 
 Write-Host '== Deploy complete =='
+# Explicit success exit - a stale $LASTEXITCODE (e.g. from robocopy) would
+# otherwise make the Azure Pipelines PowerShell task mark this job as failed.
+exit 0

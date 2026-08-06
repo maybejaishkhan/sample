@@ -278,3 +278,7 @@ finally {
     }
     Write-Host 'ZAP daemon stopped.'
 }
+
+# Explicit success exit - a stale $LASTEXITCODE (e.g. from a native command)
+# would otherwise make the Azure Pipelines PowerShell task mark this as failed.
+exit 0
