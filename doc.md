@@ -45,7 +45,7 @@ Build ──► SAST ──► MSDO ──► Deploy ──► DAST ──► Pu
 | 4 | Deploy     | Self-hosted Windows VM | Copies the artifact to `C:\site` and starts the app             |
 | 5 | DAST       | Self-hosted Windows VM | OWASP ZAP scans the running app (spider + active scan)          |
 | 6 | Publish    | Hosted Linux agent    | Aggregates all findings and publishes reports (**always runs**) |
-| 7 | DefectDojo | Hosted Linux agent    | Uploads the scanner reports to a DefectDojo instance (**optional**) |
+| 7 | DefectDojo | `DefectDojoPool` agent | Uploads the scanner reports to a DefectDojo instance (**optional**) |
 
 ```mermaid
 flowchart LR
@@ -61,8 +61,8 @@ if a security stage fails or is skipped, the reports are still generated and
 published, so you never lose scan output because of a failing scanner.
 
 **DefectDojo** is an optional final stage, gated on the `EnableDefectDojo`
-variable. It reuses the `reports-raw` artifact published by Publish and imports
-each report via the DefectDojo API v2 (see `scripts/import_defectdojo.py`).
+variable. It downloads each scanner's artifact and imports each report via the
+DefectDojo API v2 (see `scripts/import_defectdojo.ps1`).
 
 ---
 
@@ -81,7 +81,7 @@ each report via the DefectDojo API v2 (see `scripts/import_defectdojo.py`).
     ├── variables/              # every configurable value lives here
     │   ├── global.yml          #   agents, Python version, report paths
     │   ├── build.yml           #   build mode, project path, artifact name
-    │   ├── security.yml        #   scanner versions/rules, policy gates
+    │   ├── security.yml        #   scanner versions/rules, policy gates, DefectDojo
     │   └── deployment.yml      #   VM settings, app hosting, ZAP
     ├── templates/              # one file per stage
     │   ├── build.yml           #   stage 1
@@ -89,12 +89,14 @@ each report via the DefectDojo API v2 (see `scripts/import_defectdojo.py`).
     │   ├── msdo.yml            #   stage 3
     │   ├── deploy.yml          #   stage 4
     │   ├── dast.yml            #   stage 5
-    │   └── publish.yml         #   stage 6
+    │   ├── publish.yml         #   stage 6
+    │   └── defectdojo.yml      #   stage 7 (optional)
     └── scripts/                # the brains: Python + PowerShell
         ├── aggregate.py        #   parse all raw reports → combined.json
         ├── generate_html.py    #   combined.json → index.html dashboard
-        ├── security_summary.py #   combined.json → summary.json / summary.md
         ├── policy_check.py     #   fail a job on critical/high findings
+        ├── import_defectdojo.ps1 #  upload raw reports to DefectDojo (curl, runs on any agent)
+        ├── import_defectdojo.py #  same uploader, for Linux/local use
         ├── deploy.ps1          #   runs on the VM: stop/copy/start/wait
         ├── zap_scan.ps1        #   runs on the VM: headless ZAP scan
         ├── parser/             #   one parser per scanner
@@ -245,24 +247,27 @@ Collects everything and makes it available to the team. This stage:
   didn't run simply contributes nothing.
 - **Aggregates** all findings into one normalized `combined.json`
   (`aggregate.py`).
-- **Generates** a single-page HTML dashboard (`index.html`) and a Markdown
-  summary (`summary.md`) — both skipped when `PublishReports` is `false`.
-- **Publishes** three artifacts: `reports-raw`, `reports-html`, `reports-summary`.
+- **Generates** a single-page HTML dashboard (`index.html`) — skipped when
+  `PublishReports` is `false`.
+- **Publishes** the dashboard as the `reports-html` artifact. (Each scanner job
+  publishes its own raw artifact — `trufflehog`, `semgrep`, `msdo`, `zap`.)
 
 It depends on `[SAST, MSDO, DAST]` (so the scanner artifacts exist before it
 runs) and uses `condition: always()` (so it runs even when those stages failed).
 
-### Stage 7 — DefectDojo (`templates/defectdojo.yml`, hosted Linux agent, optional)
+### Stage 7 — DefectDojo (`templates/defectdojo.yml`, agent from `DefectDojoPool`, optional)
 
 Uploads the scanner reports to a DefectDojo instance so findings can be
 triaged centrally. The stage only runs when `EnableDefectDojo` is `true`.
 
-- Depends on **Publish** and reuses its `reports-raw` artifact, so it imports
-  exactly the reports the dashboard is built from.
-- Runs `scripts/import_defectdojo.py`, which calls the DefectDojo API v2
-  `import-scan` / `reimport-scan` endpoint once per report file with the
-  matching scan type: `trufflehog.json` → *Trufflehog Scan*, `semgrep.json` →
-  *Semgrep JSON Report*, `msdo.sarif` → *SARIF*, `zap.xml` → *ZAP Scan*.
+- Depends on **Publish** and downloads each scanner's own artifact
+  (`trufflehog`, `semgrep`, `msdo`, `zap`), so it imports exactly the reports
+  the dashboard is built from.
+- Runs `scripts/import_defectdojo.ps1` (PowerShell + curl), which calls the
+  DefectDojo API v2 `import-scan` / `reimport-scan` endpoint once per report
+  file with the matching scan type: `trufflehog.json` → *Trufflehog Scan*,
+  `semgrep.json` → *Semgrep JSON Report*, `msdo.sarif` → *SARIF*, `zap.xml` →
+  *ZAP Scan*.
 - Product / engagement context is **auto-created** by DefectDojo from
   `DefectDojoProductName` / `DefectDojoEngagementName` when it does not exist.
 - `DefectDojoImportMode` (`reimport` by default) keeps one Test per scan type
@@ -376,13 +381,13 @@ job — a broken scanner can never silently pass.
 ## 8. Reports and artifacts
 
 Raw scanner output is archived per scanner (`trufflehog`, `semgrep`, `msdo`,
-`zap`) and then re-combined by the Publish stage into:
+`zap`) by each scanner job. The Publish stage aggregates it and produces the
+HTML dashboard:
 
-| Artifact        | Contents                                          |
-|-----------------|---------------------------------------------------|
-| `reports-raw`   | All original scanner files (`*.json`, `*.sarif`, `*.xml`, `*.html`) |
-| `reports-html`  | A single-page `index.html` security dashboard (severity cards, tables grouped by severity and by scanner) |
-| `reports-summary` | `combined.json` (all findings, normalized), `summary.json` (counts), `summary.md` (readable report) |
+| Artifact        | Published by          | Contents                                          |
+|-----------------|-----------------------|---------------------------------------------------|
+| `trufflehog`, `semgrep`, `msdo`, `zap` | the scanner jobs | Original scanner files (`*.json`, `*.sarif`, `*.xml`, `*.html`) |
+| `reports-html`  | the Publish stage     | A single-page `index.html` security dashboard (severity cards, tables grouped by severity and by scanner) |
 
 Download these from the pipeline run page (Artifacts → drop-down) after any run.
 
@@ -391,8 +396,6 @@ You can also run the aggregation scripts locally, e.g.:
 ```bash
 pipelines/scripts/aggregate.py --raw reports/raw --output reports/summary/combined.json
 pipelines/scripts/generate_html.py --combined reports/summary/combined.json --output reports/html/index.html
-pipelines/scripts/security_summary.py --combined reports/summary/combined.json \
-    --json reports/summary/summary.json --markdown reports/summary/summary.md
 ```
 
 ---

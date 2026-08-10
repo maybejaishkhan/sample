@@ -23,10 +23,10 @@ The Publish stage uses `condition: always()`, so if a security stage fails the
 reports are still generated and published.
 
 The DefectDojo stage is skipped unless `EnableDefectDojo` is `true`. When
-enabled it downloads the `reports-raw` artifact and imports each scanner's
-report via the DefectDojo API v2 (`import-scan`/`reimport-scan`): TruffleHog,
-Semgrep JSON, MSDO SARIF and ZAP XML. Product/engagement context is
-auto-created on the DefectDojo side, so nothing needs to be set up in the UI.
+enabled it downloads each scanner's own artifact and imports its report via the
+DefectDojo API v2 (`import-scan`/`reimport-scan`): TruffleHog, Semgrep JSON,
+MSDO SARIF and ZAP XML. Product/engagement context is auto-created on the
+DefectDojo side, so nothing needs to be set up in the UI.
 
 ## Layout
 
@@ -44,23 +44,24 @@ pipelines/
 │   ├── msdo.yml               #   Microsoft Security DevOps job
 │   ├── deploy.yml             #   deployment job to the Windows VM
 │   ├── dast.yml               #   OWASP ZAP deployment job on the VM
-│   ├── publish.yml            #   aggregation + report publishing (always)
+│   ├── publish.yml            #   aggregation + HTML dashboard publishing (always)
 │   └── defectdojo.yml         #   optional: upload reports to DefectDojo
 ├── scripts/                   # Python aggregator + PowerShell helpers
 │   ├── aggregate.py           #   parsers -> combined.json
 │   ├── generate_html.py       #   combined.json -> index.html dashboard
-│   ├── security_summary.py    #   combined.json -> summary.json/.md
 │   ├── policy_check.py        #   per-scanner policy gate (fail on critical/high)
-│   ├── import_defectdojo.py   #   uploads raw reports to DefectDojo (REST API)
+│   ├── import_defectdojo.ps1  #   uploads raw reports to DefectDojo (REST API, curl)
+│   ├── import_defectdojo.py   #   same uploader, for Linux/local use
 │   ├── deploy.ps1             #   runs on the VM: stop/copy/start/wait
 │   ├── zap_scan.ps1           #   runs on the VM: headless ZAP scan
 │   ├── parser/                #   one parser per scanner (return Finding[])
 │   └── shared/                #   Finding model + parser dispatcher
 ```
 Reports are **not stored in the repository**. They are written to the agent's
-artifact staging area (`$(Build.ArtifactStagingDirectory)/reports/...`) and
-published as pipeline artifacts (`reports-raw`, `reports-html`,
-`reports-summary`) by the Publish stage.
+artifact staging area (`$(Build.ArtifactStagingDirectory)/reports/...`) and the
+Publish stage publishes a single `reports-html` artifact (a one-page dashboard)
+plus the per-scanner artifacts (`trufflehog`, `semgrep`, `msdo`, `zap`) that
+each scanner job publishes itself.
 
 ## Configuration
 
@@ -83,7 +84,7 @@ Before the first real run:
 ## DefectDojo integration
 
 The optional `DefectDojo` stage uploads the scanner reports to a DefectDojo
-instance (`templates/defectdojo.yml` + `scripts/import_defectdojo.py`). To
+instance (`templates/defectdojo.yml` + `scripts/import_defectdojo.ps1`). To
 enable it:
 
 1. Set `EnableDefectDojo: true` in `variables/security.yml`.
@@ -110,6 +111,10 @@ Scan type mapping:
 | `semgrep.json`    | `Semgrep JSON Report` |
 | `msdo.sarif`      | `SARIF`              |
 | `zap.xml`         | `ZAP Scan`           |
+
+The import step is a PowerShell script (`import_defectdojo.ps1`) so it runs on
+the hosted Linux image **and** self-hosted Windows agents; it uses `curl`, which
+is built into Windows 10 1803+ / Server 2019+ and preinstalled on Linux.
 
 To test the upload locally (a running DefectDojo instance is required):
 
@@ -185,8 +190,4 @@ pipelines/scripts/aggregate.py --raw pipelines/reports/raw \
 
 pipelines/scripts/generate_html.py --combined pipelines/reports/summary/combined.json \
     --output pipelines/reports/html/index.html
-
-pipelines/scripts/security_summary.py --combined pipelines/reports/summary/combined.json \
-    --json pipelines/reports/summary/summary.json \
-    --markdown pipelines/reports/summary/summary.md
 ```

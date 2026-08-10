@@ -5,9 +5,9 @@
 # API. Enabled with the `EnableDefectDojo` variable; when disabled the stage is
 # skipped entirely and the pipeline is unchanged.
 #
-# The stage depends on Publish (which always runs) and reuses the `reports-raw`
-# artifact it publishes, so it imports exactly the same raw reports that the
-# report dashboard is built from:
+# The stage depends on Publish and downloads each scanner's own artifact
+# (published by the SAST/MSDO/DAST jobs), so it imports exactly the same raw
+# reports that the HTML dashboard is built from:
 #
 #   trufflehog.json -> Trufflehog Scan
 #   semgrep.json    -> Semgrep JSON Report
@@ -45,30 +45,56 @@ stages:
         steps:
           - checkout: self
 
-          # Raw reports published by the Publish stage.
+          # Raw reports published by the SAST/MSDO/DAST jobs. Each download is
+          # best-effort: a scanner that produced nothing simply contributes
+          # nothing to the import.
           - task: DownloadPipelineArtifact@2
-            displayName: Download reports-raw
+            displayName: Download TruffleHog output
+            continueOnError: true
             inputs:
               buildType: current
-              artifactName: reports-raw
+              artifactName: $(TrufflehogArtifact)
               targetPath: $(RawReportsDirFull)
 
-          # Import each scanner's report. The report file -> scan type mapping
-          # is passed from the variables so the file names live in one place.
-          - script: |
-              set -e
-              python3 -m pip install --quiet requests
-              python3 "$(ScriptsDir)/import_defectdojo.py" \
-                --raw "$(RawReportsDirFull)" \
-                --mode "$(DefectDojoImportMode)" \
-                --product "$(DefectDojoProductName)" \
-                --product-type "$(DefectDojoProductTypeName)" \
-                --engagement "$(DefectDojoEngagementName)" \
-                --scan-type "$(TrufflehogJsonReport)=Trufflehog Scan" \
-                --scan-type "$(SemgrepJsonReport)=Semgrep JSON Report" \
-                --scan-type "$(MsdoSarifReport)=SARIF" \
-                --scan-type "$(ZapXmlReport)=ZAP Scan"
+          - task: DownloadPipelineArtifact@2
+            displayName: Download Semgrep output
+            continueOnError: true
+            inputs:
+              buildType: current
+              artifactName: $(SemgrepArtifact)
+              targetPath: $(RawReportsDirFull)
+
+          - task: DownloadPipelineArtifact@2
+            displayName: Download MSDO output
+            continueOnError: true
+            inputs:
+              buildType: current
+              artifactName: $(MsdoArtifact)
+              targetPath: $(RawReportsDirFull)
+
+          - task: DownloadPipelineArtifact@2
+            displayName: Download ZAP output
+            continueOnError: true
+            inputs:
+              buildType: current
+              artifactName: $(ZapArtifact)
+              targetPath: $(RawReportsDirFull)
+
+          # Import each scanner's report. PowerShell runs on both the hosted
+          # Linux image and self-hosted Windows agents (the script uses curl).
+          # The report file -> scan type mapping is passed from the variables so
+          # the file names live in one place.
+          - task: PowerShell@2
             displayName: Import scan results
+            inputs:
+              filePath: $(System.DefaultWorkingDirectory)/pipelines/scripts/import_defectdojo.ps1
+              arguments: >-
+                -RawDir "$(RawReportsDirFull)"
+                -Mode "$(DefectDojoImportMode)"
+                -Product "$(DefectDojoProductName)"
+                -ProductType "$(DefectDojoProductTypeName)"
+                -Engagement "$(DefectDojoEngagementName)"
+                -ScanTypes "$(TrufflehogJsonReport)=Trufflehog Scan,$(SemgrepJsonReport)=Semgrep JSON Report,$(MsdoSarifReport)=SARIF,$(ZapXmlReport)=ZAP Scan"
             env:
               DEFECTDOJO_URL: $(DefectDojoUrl)
               DEFECTDOJO_API_TOKEN: $(DefectDojoApiToken)

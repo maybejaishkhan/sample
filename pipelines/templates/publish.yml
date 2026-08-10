@@ -1,8 +1,8 @@
 # ==============================================================================
 # Publish stage.
 #
-# Aggregates every scanner's raw output into a common model, generates a
-# combined HTML dashboard and a Markdown summary, then publishes the reports.
+# Aggregates every scanner's raw output into a common model, generates the
+# single-page HTML dashboard and publishes it as the `reports-html` artifact.
 #
 # IMPORTANT: this stage uses `condition: always()` so it runs even when an
 # earlier stage (SAST/MSDO/Deploy/DAST) fails or is skipped. Reports are never
@@ -76,34 +76,11 @@ stages:
             displayName: Generate HTML dashboard
             condition: and(succeededOrFailed(), eq(variables['PublishReports'], 'true'))
 
-          - script: |
-              python3 "$(ScriptsDir)/security_summary.py" \
-                --combined "$(SummaryReportsDirFull)/combined.json" \
-                --json "$(SummaryReportsDirFull)/summary.json" \
-                --markdown "$(SummaryReportsDirFull)/summary.md"
-            displayName: Generate summary
-            condition: and(succeededOrFailed(), eq(variables['PublishReports'], 'true'))
-
           # --- Publish --------------------------------------------------------
-          - task: PublishPipelineArtifact@1
-            displayName: Publish artifact (reports-raw)
-            inputs:
-              targetPath: $(RawReportsDirFull)
-              artifactName: reports-raw
-              publishLocation: pipeline
-
           - task: PublishPipelineArtifact@1
             displayName: Publish artifact (reports-html)
             condition: eq(variables['PublishReports'], 'true')
             inputs:
               targetPath: $(HtmlReportsDirFull)
               artifactName: reports-html
-              publishLocation: pipeline
-
-          - task: PublishPipelineArtifact@1
-            displayName: Publish artifact (reports-summary)
-            condition: eq(variables['PublishReports'], 'true')
-            inputs:
-              targetPath: $(SummaryReportsDirFull)
-              artifactName: reports-summary
               publishLocation: pipeline

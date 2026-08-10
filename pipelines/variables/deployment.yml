@@ -67,6 +67,8 @@ variables:
     value: '8090'
 
   # ------------------------------------------------------- Report publishing
-  # Set to false to skip HTML/summary generation and only publish raw reports.
+  # Set to false to skip HTML dashboard generation/publishing entirely. Only
+  # the per-scanner artifacts (trufflehog, semgrep, msdo, zap) are always
+  # published by the scanner jobs themselves.
   - name: PublishReports
     value: true
