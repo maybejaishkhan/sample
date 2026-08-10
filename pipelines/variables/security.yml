@@ -42,10 +42,17 @@ variables:
     value: false
 
   # Agent pool for the DefectDojo job (a literal pool name, not a macro - Azure
-  # does not re-expand nested variables). Use 'ubuntu-latest' (default, same as
-  # AgentImage) or a self-hosted pool that can reach DefectDojoUrl.
+  # does not re-expand nested variables). Use 'ubuntu-latest' for a hosted agent
+  # or the name of a self-hosted pool that can reach DefectDojoUrl.
   - name: DefectDojoPool
-    value: ubuntu-latest
+    value: cloud-poc
+
+  # Name of the specific agent in DefectDojoPool to run the import on. Leave
+  # empty to let Azure pick any agent in the pool. When set, the job adds a
+  # `Agent.Name -equals` demand. NOTE: set this value in this file (a compile
+  # time variable), not in a runtime variable group, or the demand is not added.
+  - name: DefectDojoAgentName
+    value: defect-dojo
 
   # Base URL of the DefectDojo instance, e.g. http://<server>:<port>.
   # Override per environment; never hardcode in a shared variable file.

@@ -271,9 +271,10 @@ triaged centrally. The stage only runs when `EnableDefectDojo` is `true`.
 
 Authentication uses a DefectDojo API v2 token passed as a **secret**
 (`DefectDojoApiToken`) and the base URL (`DefectDojoUrl`); both must be
-overridden per environment. The agent pool (`DefectDojoPool`) must be able to
-reach the server — point it at a self-hosted agent when DefectDojo runs on a
-private network.
+overridden per environment. The job's agent pool (`DefectDojoPool`) must be able
+to reach the server — set `DefectDojoAgentName` to pin the job to a specific
+agent in the pool (e.g. a dedicated `defect-dojo` agent) via an
+`Agent.Name -equals` demand.
 
 ---
 

@@ -92,9 +92,11 @@ enable it:
    / library secret rather than editing the variable file.
 3. Optionally change `DefectDojoProductName`, `DefectDojoProductTypeName` and
    `DefectDojoEngagementName`; DefectDojo auto-creates them on first import.
-4. Make sure the job's agent pool (`DefectDojoPool`, hosted Linux by default)
-   can reach the server. If DefectDojo runs on a private network, point
-   `DefectDojoPool` at a self-hosted agent that can reach it.
+4. Make sure the job's agent pool (`DefectDojoPool`, e.g. `cloud-poc`) can
+   reach the server. If you have a dedicated agent for it, set
+   `DefectDojoAgentName` (e.g. `defect-dojo`) and the job is pinned to that
+   agent via an `Agent.Name -equals` demand. For a hosted agent use
+   `DefectDojoPool: ubuntu-latest` and leave `DefectDojoAgentName` empty.
 
 `DefectDojoImportMode` controls whether each run creates a fresh Test
 (`import`) or updates one Test per scan type and closes stale findings

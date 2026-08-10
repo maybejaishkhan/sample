@@ -35,6 +35,13 @@ stages:
     jobs:
       - job: ImportScanResults
         displayName: Import scan results into DefectDojo
+        # When DefectDojoAgentName is set, pin the job to that specific agent
+        # in the pool (e.g. a dedicated 'defect-dojo' agent that can reach the
+        # server). The key is only inserted when the variable is non-empty, so
+        # hosted pools are unaffected.
+        ${{ if ne(variables['DefectDojoAgentName'], '') }}:
+          demands:
+            - Agent.Name -equals $(DefectDojoAgentName)
         steps:
           - checkout: self
 
