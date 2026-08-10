@@ -516,9 +516,9 @@ Exactly three things change:
 Nothing else changes — the Publish stage picks new reports up automatically
 because aggregation is driven by the dispatcher.
 
-If the DefectDojo stage is enabled, add one more mapping line in
-`templates/defectdojo.yml` (`--scan-type "<ReportFile>=<DefectDojo Scan Type>"`)
-so the new report is uploaded too.
+If the DefectDojo stage is enabled, add one more `FILE=SCAN_TYPE` pair to the
+`DEFECTDOJO_SCAN_TYPES` environment variable in `templates/defectdojo.yml` so
+the new report is uploaded too.
 
 ### Building a real application instead of the sample
 

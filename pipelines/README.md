@@ -174,9 +174,9 @@ Exactly three things change:
 Nothing else needs to change - the Publish stage picks new files up
 automatically because aggregation is driven by the dispatcher.
 
-If the DefectDojo stage is enabled, also add a `--scan-type` line in
-`templates/defectdojo.yml` mapping the new report file to its DefectDojo scan
-type.
+If the DefectDojo stage is enabled, also add a `FILE=SCAN_TYPE` pair to the
+`DEFECTDOJO_SCAN_TYPES` environment variable in `templates/defectdojo.yml`
+mapping the new report file to its DefectDojo scan type.
 
 ## Running the aggregator locally
 

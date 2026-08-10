@@ -10,18 +10,23 @@ names passed here, so nothing needs to be set up in the UI beforehand.
 
 Report file -> scan type mapping defaults to this pipeline's well-known file
 names (kept in sync with pipelines/variables/security.yml) and can be
-extended/overridden with -ScanTypes (comma-separated "FILE=SCAN_TYPE" pairs):
+extended/overridden with the DEFECTDOJO_SCAN_TYPES environment variable
+(comma-separated "FILE=SCAN_TYPE" pairs):
 
     trufflehog.json  -> Trufflehog Scan
     semgrep.json     -> Semgrep JSON Report
     msdo.sarif       -> SARIF
     zap.xml          -> ZAP Scan
 
+The mapping is read from the environment (not a command-line argument) because
+the Azure PowerShell task mangles argument values that contain '='.
+
 Environment variables (secrets are read from the environment so they never
 appear on the command line):
 
     DEFECTDOJO_URL               Base URL, e.g. https://dd.example.com (no trailing /)
     DEFECTDOJO_API_TOKEN         API v2 token, sent as `Authorization: Token <token>`
+    DEFECTDOJO_SCAN_TYPES        Optional "FILE=SCAN_TYPE" pairs, comma-separated
     DEFECTDOJO_SCM_URI           Optional source code management URI (e.g. repo URL)
     DEFECTDOJO_SCM_BRANCH        Optional branch name (e.g. main)
 
@@ -41,7 +46,6 @@ param(
     [Parameter(Mandatory = $true)][string]$Product,
     [string]$ProductType = '',
     [Parameter(Mandatory = $true)][string]$Engagement,
-    [string]$ScanTypes = '',
     [switch]$Insecure
 )
 
@@ -67,8 +71,8 @@ if (-not $curl) {
     exit 2
 }
 
-# Default report file -> DefectDojo scan type mapping. -ScanTypes overrides/adds
-# entries (comma-separated "FILE=SCAN_TYPE" pairs).
+# Default report file -> DefectDojo scan type mapping. DEFECTDOJO_SCAN_TYPES
+# (comma-separated "FILE=SCAN_TYPE" pairs) overrides/adds entries.
 $defaultScanTypes = [ordered]@{
     'trufflehog.json' = 'Trufflehog Scan'
     'semgrep.json'    = 'Semgrep JSON Report'
@@ -76,15 +80,18 @@ $defaultScanTypes = [ordered]@{
     'zap.xml'         = 'ZAP Scan'
 }
 $scanTypes = @{}
-foreach ($pair in $ScanTypes -split ',') {
-    $pair = $pair.Trim()
-    if (-not $pair) { continue }
-    $parts = $pair -split '=', 2
-    if ($parts.Count -ne 2 -or [string]::IsNullOrWhiteSpace($parts[0])) {
-        Write-Host "ERROR: invalid scan type mapping '$pair' (expected FILE=SCAN_TYPE)." -ForegroundColor Red
-        exit 2
+$scanTypesSpec = $env:DEFECTDOJO_SCAN_TYPES
+if ($scanTypesSpec) {
+    foreach ($pair in $scanTypesSpec -split ',') {
+        $pair = $pair.Trim()
+        if (-not $pair) { continue }
+        $parts = $pair -split '=', 2
+        if ($parts.Count -ne 2 -or [string]::IsNullOrWhiteSpace($parts[0])) {
+            Write-Host "ERROR: invalid scan type mapping '$pair' (expected FILE=SCAN_TYPE)." -ForegroundColor Red
+            exit 2
+        }
+        $scanTypes[$parts[0]] = $parts[1].Trim()
     }
-    $scanTypes[$parts[0]] = $parts[1]
 }
 foreach ($key in $defaultScanTypes.Keys) {
     if (-not $scanTypes.ContainsKey($key)) { $scanTypes[$key] = $defaultScanTypes[$key] }
