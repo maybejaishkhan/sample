@@ -34,17 +34,18 @@ touching pipeline logic.
 ## 2. High-level flow
 
 ```
-Build ──► SAST ──► MSDO ──► Deploy ──► DAST ──► Publish
+Build ──► SAST ──► MSDO ──► Deploy ──► DAST ──► Publish ──► DefectDojo (optional)
 ```
 
-| # | Stage   | Where it runs         | What it does                                                     |
-|---|---------|-----------------------|------------------------------------------------------------------|
-| 1 | Build   | Hosted Linux agent    | Publishes the app and stores it as the `drop` artifact           |
-| 2 | SAST    | Hosted Linux agent    | Static analysis: TruffleHog (secrets) + Semgrep (code), in parallel |
-| 3 | MSDO    | Hosted Windows agent  | Microsoft Security DevOps, produces a SARIF report               |
-| 4 | Deploy  | Self-hosted Windows VM | Copies the artifact to `C:\site` and starts the app             |
-| 5 | DAST    | Self-hosted Windows VM | OWASP ZAP scans the running app (spider + active scan)          |
-| 6 | Publish | Hosted Linux agent    | Aggregates all findings and publishes reports (**always runs**) |
+| # | Stage      | Where it runs         | What it does                                                     |
+|---|------------|-----------------------|------------------------------------------------------------------|
+| 1 | Build      | Hosted Linux agent    | Publishes the app and stores it as the `drop` artifact           |
+| 2 | SAST       | Hosted Linux agent    | Static analysis: TruffleHog (secrets) + Semgrep (code), in parallel |
+| 3 | MSDO       | Hosted Windows agent  | Microsoft Security DevOps, produces a SARIF report               |
+| 4 | Deploy     | Self-hosted Windows VM | Copies the artifact to `C:\site` and starts the app             |
+| 5 | DAST       | Self-hosted Windows VM | OWASP ZAP scans the running app (spider + active scan)          |
+| 6 | Publish    | Hosted Linux agent    | Aggregates all findings and publishes reports (**always runs**) |
+| 7 | DefectDojo | Hosted Linux agent    | Uploads the scanner reports to a DefectDojo instance (**optional**) |
 
 ```mermaid
 flowchart LR
@@ -52,11 +53,16 @@ flowchart LR
     B -->|always| F
     C -->|always| F
     E -->|always| F
+    F -->|EnableDefectDojo=true| G[DefectDojo]
 ```
 
 **Key design decision:** the **Publish** stage uses `condition: always()`. Even
 if a security stage fails or is skipped, the reports are still generated and
 published, so you never lose scan output because of a failing scanner.
+
+**DefectDojo** is an optional final stage, gated on the `EnableDefectDojo`
+variable. It reuses the `reports-raw` artifact published by Publish and imports
+each report via the DefectDojo API v2 (see `scripts/import_defectdojo.py`).
 
 ---
 
@@ -246,6 +252,29 @@ Collects everything and makes it available to the team. This stage:
 It depends on `[SAST, MSDO, DAST]` (so the scanner artifacts exist before it
 runs) and uses `condition: always()` (so it runs even when those stages failed).
 
+### Stage 7 — DefectDojo (`templates/defectdojo.yml`, hosted Linux agent, optional)
+
+Uploads the scanner reports to a DefectDojo instance so findings can be
+triaged centrally. The stage only runs when `EnableDefectDojo` is `true`.
+
+- Depends on **Publish** and reuses its `reports-raw` artifact, so it imports
+  exactly the reports the dashboard is built from.
+- Runs `scripts/import_defectdojo.py`, which calls the DefectDojo API v2
+  `import-scan` / `reimport-scan` endpoint once per report file with the
+  matching scan type: `trufflehog.json` → *Trufflehog Scan*, `semgrep.json` →
+  *Semgrep JSON Report*, `msdo.sarif` → *SARIF*, `zap.xml` → *ZAP Scan*.
+- Product / engagement context is **auto-created** by DefectDojo from
+  `DefectDojoProductName` / `DefectDojoEngagementName` when it does not exist.
+- `DefectDojoImportMode` (`reimport` by default) keeps one Test per scan type
+  inside the engagement and closes findings that disappear, instead of stacking
+  a new Test per run.
+
+Authentication uses a DefectDojo API v2 token passed as a **secret**
+(`DefectDojoApiToken`) and the base URL (`DefectDojoUrl`); both must be
+overridden per environment. The agent pool (`DefectDojoPool`) must be able to
+reach the server — point it at a self-hosted agent when DefectDojo runs on a
+private network.
+
 ---
 
 ## 6. Configuration
@@ -292,6 +321,12 @@ Key items: `SemgrepRules` (`p/security-audit`), `SemgrepVersion` (empty = latest
   scanners write and what the Python parsers expect.
 - **Artifact names:** `trufflehog`, `semgrep`, `msdo`, `zap` — the Publish stage
   downloads these by name, so keep them in sync if renamed.
+- **DefectDojo:** `EnableDefectDojo` (default `false`) turns the optional
+  DefectDojo stage on/off; `DefectDojoUrl` + `DefectDojoApiToken` (a **secret**)
+  point at the instance; `DefectDojoProductName` / `DefectDojoEngagementName`
+  select (and auto-create) the product/engagement; `DefectDojoImportMode`
+  controls `import` vs `reimport`; `DefectDojoPool` selects the agent pool
+  (defaults to the hosted Linux image).
 
 ### `deployment.yml` — VM + DAST settings
 
@@ -476,6 +511,10 @@ Exactly three things change:
 
 Nothing else changes — the Publish stage picks new reports up automatically
 because aggregation is driven by the dispatcher.
+
+If the DefectDojo stage is enabled, add one more mapping line in
+`templates/defectdojo.yml` (`--scan-type "<ReportFile>=<DefectDojo Scan Type>"`)
+so the new report is uploaded too.
 
 ### Building a real application instead of the sample
 

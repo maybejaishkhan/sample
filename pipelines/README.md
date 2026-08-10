@@ -6,20 +6,27 @@ dynamic-scanning a Windows-VM-hosted application.
 ## Pipeline shape
 
 ```
-Build ──► SAST ──► MSDO ──► Deploy ──► DAST ──► Publish
+Build ──► SAST ──► MSDO ──► Deploy ──► DAST ──► Publish ──► DefectDojo (optional)
 ```
 
-| Stage    | What it does                                                        |
-| -------- | ------------------------------------------------------------------- |
-| Build    | Produces the deployment artifact (sample app by default)             |
-| SAST     | TruffleHog (secrets) + Semgrep (static analysis), run in parallel   |
-| MSDO     | Microsoft Security DevOps -> SARIF                                   |
-| Deploy   | Deployment job on the Windows VM -> copies app to `C:\site`          |
-| DAST     | OWASP ZAP (already installed on the VM) scans the deployed app       |
-| Publish  | Aggregates everything into reports; **always runs**                 |
+| Stage       | What it does                                                        |
+| ----------- | ------------------------------------------------------------------- |
+| Build       | Produces the deployment artifact (sample app by default)             |
+| SAST        | TruffleHog (secrets) + Semgrep (static analysis), run in parallel   |
+| MSDO        | Microsoft Security DevOps -> SARIF                                   |
+| Deploy      | Deployment job on the Windows VM -> copies app to `C:\site`          |
+| DAST        | OWASP ZAP (already installed on the VM) scans the deployed app       |
+| Publish     | Aggregates everything into reports; **always runs**                 |
+| DefectDojo  | Uploads the scanner reports to a DefectDojo instance (**optional**) |
 
 The Publish stage uses `condition: always()`, so if a security stage fails the
 reports are still generated and published.
+
+The DefectDojo stage is skipped unless `EnableDefectDojo` is `true`. When
+enabled it downloads the `reports-raw` artifact and imports each scanner's
+report via the DefectDojo API v2 (`import-scan`/`reimport-scan`): TruffleHog,
+Semgrep JSON, MSDO SARIF and ZAP XML. Product/engagement context is
+auto-created on the DefectDojo side, so nothing needs to be set up in the UI.
 
 ## Layout
 
@@ -29,7 +36,7 @@ pipelines/
 ├── variables/                 # every configurable value lives here
 │   ├── global.yml             #   cross-cutting (agents, python, paths)
 │   ├── build.yml              #   build mode, artifact name, project path
-│   ├── security.yml           #   scanner versions/rules, policy gates
+│   ├── security.yml           #   scanner versions/rules, policy gates, DefectDojo
 │   └── deployment.yml         #   VM env, site path, service/self-hosted, ZAP
 ├── templates/                 # one file per stage; jobs + steps fully inline
 │   ├── build.yml              #   creates the deployment artifact
@@ -37,12 +44,14 @@ pipelines/
 │   ├── msdo.yml               #   Microsoft Security DevOps job
 │   ├── deploy.yml             #   deployment job to the Windows VM
 │   ├── dast.yml               #   OWASP ZAP deployment job on the VM
-│   └── publish.yml            #   aggregation + report publishing (always)
+│   ├── publish.yml            #   aggregation + report publishing (always)
+│   └── defectdojo.yml         #   optional: upload reports to DefectDojo
 ├── scripts/                   # Python aggregator + PowerShell helpers
 │   ├── aggregate.py           #   parsers -> combined.json
 │   ├── generate_html.py       #   combined.json -> index.html dashboard
 │   ├── security_summary.py    #   combined.json -> summary.json/.md
 │   ├── policy_check.py        #   per-scanner policy gate (fail on critical/high)
+│   ├── import_defectdojo.py   #   uploads raw reports to DefectDojo (REST API)
 │   ├── deploy.ps1             #   runs on the VM: stop/copy/start/wait
 │   ├── zap_scan.ps1           #   runs on the VM: headless ZAP scan
 │   ├── parser/                #   one parser per scanner (return Finding[])
@@ -71,6 +80,47 @@ Before the first real run:
   `templates/msdo.yml`).
 * Bump `TrufflehogVersion` / `SemgrepVersion` / `ZapTimeout` to taste.
 
+## DefectDojo integration
+
+The optional `DefectDojo` stage uploads the scanner reports to a DefectDojo
+instance (`templates/defectdojo.yml` + `scripts/import_defectdojo.py`). To
+enable it:
+
+1. Set `EnableDefectDojo: true` in `variables/security.yml`.
+2. Set the base URL (`DefectDojoUrl`, e.g. `http://<server>:<port>`) and the
+   API v2 token (`DefectDojoApiToken`) as a **secret** - use a variable group
+   / library secret rather than editing the variable file.
+3. Optionally change `DefectDojoProductName`, `DefectDojoProductTypeName` and
+   `DefectDojoEngagementName`; DefectDojo auto-creates them on first import.
+4. Make sure the job's agent pool (`DefectDojoPool`, hosted Linux by default)
+   can reach the server. If DefectDojo runs on a private network, point
+   `DefectDojoPool` at a self-hosted agent that can reach it.
+
+`DefectDojoImportMode` controls whether each run creates a fresh Test
+(`import`) or updates one Test per scan type and closes stale findings
+(`reimport`, the default).
+
+Scan type mapping:
+
+| Report file  | DefectDojo scan type   |
+| ------------ | ---------------------- |
+| `trufflehog.json` | `Trufflehog Scan`   |
+| `semgrep.json`    | `Semgrep JSON Report` |
+| `msdo.sarif`      | `SARIF`              |
+| `zap.xml`         | `ZAP Scan`           |
+
+To test the upload locally (a running DefectDojo instance is required):
+
+```bash
+DEFECTDOJO_URL=http://<server>:<port> \
+DEFECTDOJO_API_TOKEN=<token> \
+python3 pipelines/scripts/import_defectdojo.py \
+    --raw pipelines/reports/raw \
+    --product sample-app \
+    --engagement CI-CD \
+    --scan-type trufflehog.json="Trufflehog Scan"
+```
+
 ## Testing the security stage
 
 Intentional test fixtures live in `.hidden/security-tests/` (git-ignored, since
@@ -96,6 +146,11 @@ finds an ERROR/high finding, so the **build fails** at the SAST stage - while
 the Publish stage still runs and produces all reports. To verify detection
 without failing the build, set `FailOnCritical: false` / `FailOnHigh: false`.
 
+TruffleHog findings are treated as `high` whether the secret is verified or
+not, so the TruffleHog job fails on *unverified* results as well (TruffleHog's
+own `--fail` only exits non-zero for verified secrets). Set
+`FailOnHigh: false` to stop gating on TruffleHog results entirely.
+
 ## Adding a new scanner (Trivy, Checkov, Gitleaks, ...)
 
 Exactly three things change:
@@ -111,6 +166,10 @@ Exactly three things change:
 
 Nothing else needs to change - the Publish stage picks new files up
 automatically because aggregation is driven by the dispatcher.
+
+If the DefectDojo stage is enabled, also add a `--scan-type` line in
+`templates/defectdojo.yml` mapping the new report file to its DefectDojo scan
+type.
 
 ## Running the aggregator locally
 

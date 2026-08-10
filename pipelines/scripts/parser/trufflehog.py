@@ -41,8 +41,10 @@ def _severity(item: dict) -> str:
     explicit = item.get("Severity")
     if explicit:
         return str(explicit).lower()
-    # Unverified secrets are still worth flagging, but verified ones are worse.
-    return "high" if item.get("Verified") else "medium"
+    # Any detected secret fails the policy gate, verified or not. TruffleHog's
+    # own --fail only exits non-zero for verified secrets, so we map unverified
+    # ones to high as well; the message keeps the "(verified)" marker.
+    return "high"
 
 
 def parse(path: str) -> List[Finding]:

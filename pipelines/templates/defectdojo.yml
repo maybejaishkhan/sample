@@ -1,0 +1,69 @@
+# ==============================================================================
+# DefectDojo stage (optional).
+#
+# Uploads the aggregated scanner reports to a DefectDojo instance via its REST
+# API. Enabled with the `EnableDefectDojo` variable; when disabled the stage is
+# skipped entirely and the pipeline is unchanged.
+#
+# The stage depends on Publish (which always runs) and reuses the `reports-raw`
+# artifact it publishes, so it imports exactly the same raw reports that the
+# report dashboard is built from:
+#
+#   trufflehog.json -> Trufflehog Scan
+#   semgrep.json    -> Semgrep JSON Report
+#   msdo.sarif      -> SARIF
+#   zap.xml         -> ZAP Scan
+#
+# PREREQUISITES:
+#   * A DefectDojo API v2 token (user menu -> API v2 Token).
+#   * The agent pool used here must be able to reach the DefectDojo URL. If the
+#     instance is not publicly reachable, point `DefectDojoPool` at a
+#     self-hosted agent on a network that can reach it.
+#   * Provide the token via a secret (variable group / library secret) and
+#     override `DefectDojoUrl` per environment - never commit real values.
+#
+# Product / engagement / product type are auto-created by DefectDojo when they
+# do not exist yet (see the import script for the API call shape).
+# ==============================================================================
+
+stages:
+  - stage: DefectDojo
+    displayName: DefectDojo
+    dependsOn: Publish
+    condition: eq(variables['EnableDefectDojo'], 'true')
+    pool: $(DefectDojoPool)
+    jobs:
+      - job: ImportScanResults
+        displayName: Import scan results into DefectDojo
+        steps:
+          - checkout: self
+
+          # Raw reports published by the Publish stage.
+          - task: DownloadPipelineArtifact@2
+            displayName: Download reports-raw
+            inputs:
+              buildType: current
+              artifactName: reports-raw
+              targetPath: $(RawReportsDirFull)
+
+          # Import each scanner's report. The report file -> scan type mapping
+          # is passed from the variables so the file names live in one place.
+          - script: |
+              set -e
+              python3 -m pip install --quiet requests
+              python3 "$(ScriptsDir)/import_defectdojo.py" \
+                --raw "$(RawReportsDirFull)" \
+                --mode "$(DefectDojoImportMode)" \
+                --product "$(DefectDojoProductName)" \
+                --product-type "$(DefectDojoProductTypeName)" \
+                --engagement "$(DefectDojoEngagementName)" \
+                --scan-type "$(TrufflehogJsonReport)=Trufflehog Scan" \
+                --scan-type "$(SemgrepJsonReport)=Semgrep JSON Report" \
+                --scan-type "$(MsdoSarifReport)=SARIF" \
+                --scan-type "$(ZapXmlReport)=ZAP Scan"
+            displayName: Import scan results
+            env:
+              DEFECTDOJO_URL: $(DefectDojoUrl)
+              DEFECTDOJO_API_TOKEN: $(DefectDojoApiToken)
+              DEFECTDOJO_SCM_URI: $(Build.Repository.Uri)
+              DEFECTDOJO_SCM_BRANCH: $(Build.SourceBranchName)

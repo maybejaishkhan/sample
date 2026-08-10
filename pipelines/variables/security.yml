@@ -24,7 +24,7 @@ variables:
   # ------------------------------------------------------------- TruffleHog
   # Extra arguments passed to `trufflehog filesystem`. Empty by default.
   - name: TrufflehogExtraArgs
-    value: ''
+    value: '--no-update'
 
   # TruffleHog version to install (used to build the GitHub release URL).
   # TODO: bump to a recent release before production use.
@@ -34,6 +34,44 @@ variables:
   # Git history depth scanned by TruffleHog ('' = full history).
   - name: TrufflehogDepth
     value: ''
+
+  # ----------------------------------------------------------- DefectDojo
+  # Optional stage that uploads the scanner reports to a DefectDojo instance
+  # at the end of the pipeline. Set to 'true' to enable it.
+  - name: EnableDefectDojo
+    value: false
+
+  # Agent pool for the DefectDojo job (a literal pool name, not a macro - Azure
+  # does not re-expand nested variables). Use 'ubuntu-latest' (default, same as
+  # AgentImage) or a self-hosted pool that can reach DefectDojoUrl.
+  - name: DefectDojoPool
+    value: ubuntu-latest
+
+  # Base URL of the DefectDojo instance, e.g. http://<server>:<port>.
+  # Override per environment; never hardcode in a shared variable file.
+  - name: DefectDojoUrl
+    value: ''
+
+  # DefectDojo API v2 token (user menu -> API v2 Token). Override with a
+  # secret (variable group / library secret); never commit a real token.
+  - name: DefectDojoApiToken
+    value: ''
+
+  # Product / product type / engagement to import into. DefectDojo
+  # auto-creates them when they do not exist yet.
+  - name: DefectDojoProductName
+    value: sample-app
+  - name: DefectDojoProductTypeName
+    value: ''
+  - name: DefectDojoEngagementName
+    value: CI-CD
+
+  # Import mode:
+  #   import    - import-scan: creates a fresh Test per pipeline run.
+  #   reimport  - reimport-scan: updates a single Test per scan type inside
+  #               the engagement, closing findings that no longer appear.
+  - name: DefectDojoImportMode
+    value: reimport
 
   # ------------------------------------------------------------------ MSDO
   # Microsoft Security DevOps policy. Valid values for the Azure DevOps task:
@@ -49,6 +87,10 @@ variables:
   # If a scanner finds findings at these severities the job FAILS and later
   # stages (Deploy/DAST) are skipped. The Publish stage still runs via
   # `condition: always()` so reports are never lost.
+  #
+  # TruffleHog findings are always mapped to high (verified or not), so with
+  # FailOnHigh=true even unverified secrets fail the build - TruffleHog's own
+  # --fail only exits non-zero for verified results.
   - name: FailOnCritical
     value: true
   - name: FailOnHigh

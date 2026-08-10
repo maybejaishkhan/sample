@@ -8,10 +8,12 @@
 #
 # Stage flow (see templates/*.yml):
 #
-#   Build  ->  SAST (TruffleHog + Semgrep)  ->  MSDO  ->  Deploy  ->  DAST  ->  Publish
+#   Build  ->  SAST (TruffleHog + Semgrep)  ->  MSDO  ->  Deploy  ->  DAST
+#          ->  Publish  ->  DefectDojo (optional)
 #
 # Publish always runs (condition: always()) so reports are never lost, even
-# when a security stage fails.
+# when a security stage fails. DefectDojo only runs when the EnableDefectDojo
+# variable is true; it uploads the scanner reports to a DefectDojo instance.
 # ==============================================================================
 
 trigger:
@@ -57,3 +59,7 @@ stages:
 
   # 6. Aggregate + publish all reports (always runs).
   - template: templates/publish.yml
+
+  # 7. (Optional) Upload scan results to DefectDojo. Controlled by the
+  #    EnableDefectDojo variable.
+  - template: templates/defectdojo.yml
