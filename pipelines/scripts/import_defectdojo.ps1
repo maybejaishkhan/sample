@@ -51,8 +51,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$url = $env:DEFECTDOJO_URL
-$token = $env:DEFECTDOJO_API_TOKEN
+$url = if ($env:DEFECTDOJO_URL) { $env:DEFECTDOJO_URL.Trim() } else { '' }
+# Trim - a stray space/newline from pasting a token into a variable group is a
+# common cause of "Invalid token" 403s.
+$token = if ($env:DEFECTDOJO_API_TOKEN) { $env:DEFECTDOJO_API_TOKEN.Trim() } else { '' }
 
 if ([string]::IsNullOrWhiteSpace($url) -or [string]::IsNullOrWhiteSpace($token)) {
     Write-Host "ERROR: DEFECTDOJO_URL and DEFECTDOJO_API_TOKEN must be set." -ForegroundColor Red
@@ -106,6 +108,26 @@ $today = Get-Date -Format 'yyyy-MM-dd'
 $baseArgs = @('-s', '-S')
 if ($Insecure) { $baseArgs += '-k' }
 $baseArgs += @('-X', 'POST', $apiUrl, '-H', "Authorization: Token $token")
+
+# The import-scan endpoint does NOT auto-create the Product Type, so ensure it
+# exists first via the product_types API (HTTP 400 = name already exists).
+if ($ProductType) {
+    $ptUrl = "$($url.TrimEnd('/'))/api/v2/product_types/"
+    $ptOutput = & $curl '-s' '-S' '-X' 'POST' $ptUrl `
+        '-H' "Authorization: Token $token" `
+        '-H' 'Content-Type: application/json' `
+        '-d' ('{"name":"' + $ProductType + '"}') `
+        '-w' "`n%{http_code}" 2>$null
+    $ptHttp = ''
+    if ($ptOutput) { $ptHttp = ($ptOutput | Select-Object -Last 1).ToString().Trim() }
+    if ($ptHttp -eq '201' -or $ptHttp -eq '200') {
+        Write-Host "Created product type '$ProductType'."
+    } elseif ($ptHttp -eq '400') {
+        Write-Host "Product type '$ProductType' already exists."
+    } else {
+        Write-Host "WARNING: could not ensure product type '$ProductType' (HTTP $ptHttp) - continuing." -ForegroundColor Yellow
+    }
+}
 
 $imported = @()
 $failed = @()

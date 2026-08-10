@@ -132,6 +132,25 @@ def main() -> int:
     verify = not args.insecure
     session = requests.Session()
 
+    # The import-scan endpoint does NOT auto-create the Product Type, so ensure
+    # it exists first via the product_types API (400 = name already exists).
+    if args.product_type:
+        pt_url = f"{url.rstrip('/')}/api/v2/product_types/"
+        pt_response = session.post(
+            pt_url,
+            headers=headers,
+            json={"name": args.product_type},
+            verify=verify,
+            timeout=60,
+        )
+        if pt_response.status_code in (200, 201):
+            print(f"Created product type '{args.product_type}'.")
+        elif pt_response.status_code == 400:
+            print(f"Product type '{args.product_type}' already exists.")
+        else:
+            print(f"WARNING: could not ensure product type '{args.product_type}' "
+                  f"(HTTP {pt_response.status_code}) - continuing.", file=sys.stderr)
+
     imported: list = []
     failed: list = []
     for file_name, scan_type in sorted(scan_types.items()):
