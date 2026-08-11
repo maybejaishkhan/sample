@@ -268,8 +268,10 @@ triaged centrally. The stage only runs when `EnableDefectDojo` is `true`.
   file with the matching scan type: `trufflehog.json` → *Trufflehog Scan*,
   `semgrep.json` → *Semgrep JSON Report*, `msdo.sarif` → *SARIF*, `zap.xml` →
   *ZAP Scan*.
-- Product / engagement context is **auto-created** by DefectDojo from
-  `DefectDojoProductName` / `DefectDojoEngagementName` when it does not exist.
+- Product type, product and engagement are **created via the API** by the
+  import script when they do not exist (the import-scan endpoint itself only
+  auto-creates the engagement), using `DefectDojoProductTypeName`,
+  `DefectDojoProductName` and `DefectDojoEngagementName`.
 - `DefectDojoImportMode` (`reimport` by default) keeps one Test per scan type
   inside the engagement and closes findings that disappear, instead of stacking
   a new Test per run.
@@ -330,7 +332,7 @@ Key items: `SemgrepRules` (`p/security-audit`), `SemgrepVersion` (empty = latest
 - **DefectDojo:** `EnableDefectDojo` (default `false`) turns the optional
   DefectDojo stage on/off; `DefectDojoUrl` + `DefectDojoApiToken` (a **secret**)
   point at the instance; `DefectDojoProductName` / `DefectDojoEngagementName`
-  select (and auto-create) the product/engagement; `DefectDojoImportMode`
+  select (and create) the product type/product/engagement; `DefectDojoImportMode`
   controls `import` vs `reimport`; `DefectDojoPool` selects the agent pool
   (defaults to the hosted Linux image).
 

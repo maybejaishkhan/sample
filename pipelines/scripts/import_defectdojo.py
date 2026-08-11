@@ -34,6 +34,7 @@ import argparse
 import datetime
 import os
 import sys
+from urllib.parse import quote
 
 try:
     import requests
@@ -118,6 +119,7 @@ def main() -> int:
         "verified": True,
         "close_old_findings": True,
         "deduplication_on_engagement": True,
+        "auto_create_context": True,
         "product_name": args.product,
         "engagement_name": args.engagement,
     }
@@ -132,24 +134,86 @@ def main() -> int:
     verify = not args.insecure
     session = requests.Session()
 
-    # The import-scan endpoint does NOT auto-create the Product Type, so ensure
-    # it exists first via the product_types API (400 = name already exists).
+    # The import-scan endpoint does NOT auto-create the Product Type or the
+    # Product - it only auto-creates the Engagement - so ensure the product
+    # type, product and engagement exist via the API first. auto_create_context
+    # is also passed to the import for versions that honour it.
+    product_type_id = None
     if args.product_type:
-        pt_url = f"{url.rstrip('/')}/api/v2/product_types/"
         pt_response = session.post(
-            pt_url,
+            f"{url}/api/v2/product_types/",
             headers=headers,
             json={"name": args.product_type},
             verify=verify,
             timeout=60,
         )
         if pt_response.status_code in (200, 201):
+            product_type_id = pt_response.json().get("id")
             print(f"Created product type '{args.product_type}'.")
-        elif pt_response.status_code == 400:
-            print(f"Product type '{args.product_type}' already exists.")
         else:
-            print(f"WARNING: could not ensure product type '{args.product_type}' "
-                  f"(HTTP {pt_response.status_code}) - continuing.", file=sys.stderr)
+            for item in session.get(
+                f"{url}/api/v2/product_types/?name={quote(args.product_type)}",
+                headers=headers, verify=verify, timeout=60,
+            ).json().get("results", []):
+                if item.get("name") == args.product_type:
+                    product_type_id = item.get("id")
+                    break
+            if product_type_id:
+                print(f"Product type '{args.product_type}' already exists.")
+            else:
+                print(f"WARNING: could not ensure product type '{args.product_type}' "
+                      f"(HTTP {pt_response.status_code}) - continuing.", file=sys.stderr)
+
+    product_id = None
+    if product_type_id:
+        for item in session.get(
+            f"{url}/api/v2/products/?name={quote(args.product)}",
+            headers=headers, verify=verify, timeout=60,
+        ).json().get("results", []):
+            if item.get("name") == args.product and item.get("prod_type") == product_type_id:
+                product_id = item.get("id")
+                break
+        if product_id:
+            print(f"Product '{args.product}' already exists.")
+        else:
+            product_response = session.post(
+                f"{url}/api/v2/products/",
+                headers=headers,
+                json={"name": args.product, "prod_type": product_type_id,
+                      "description": args.product},
+                verify=verify,
+                timeout=60,
+            )
+            if product_response.status_code in (200, 201):
+                product_id = product_response.json().get("id")
+                print(f"Created product '{args.product}'.")
+            else:
+                print(f"WARNING: could not ensure product '{args.product}' "
+                      f"(HTTP {product_response.status_code}) - continuing.", file=sys.stderr)
+
+    if product_id:
+        engagements = session.get(
+            f"{url}/api/v2/engagements/?product={product_id}",
+            headers=headers, verify=verify, timeout=60,
+        ).json().get("results", [])
+        if any(e.get("name") == args.engagement for e in engagements):
+            print(f"Engagement '{args.engagement}' already exists.")
+        else:
+            engagement_response = session.post(
+                f"{url}/api/v2/engagements/",
+                headers=headers,
+                json={"name": args.engagement, "product": product_id,
+                      "engagement_type": "CI/CD",
+                      "target_start": today, "target_end": today},
+                verify=verify,
+                timeout=60,
+            )
+            if engagement_response.status_code in (200, 201):
+                print(f"Created engagement '{args.engagement}'.")
+            else:
+                print(f"WARNING: could not ensure engagement '{args.engagement}' "
+                      f"(HTTP {engagement_response.status_code}) - continuing.",
+                      file=sys.stderr)
 
     imported: list = []
     failed: list = []

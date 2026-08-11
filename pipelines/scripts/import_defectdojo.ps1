@@ -109,34 +109,108 @@ $baseArgs = @('-s', '-S')
 if ($Insecure) { $baseArgs += '-k' }
 $baseArgs += @('-X', 'POST', $apiUrl, '-H', "Authorization: Token $token")
 
-# The import-scan endpoint does NOT auto-create the Product Type, so ensure it
-# exists first via the product_types API. The JSON body is written to a temp
-# file and passed as `-d @file` because PowerShell 5.1 mangles arguments that
-# contain double quotes (classic native-argument quoting bug).
+# The import-scan endpoint does NOT auto-create the Product Type or the Product
+# - it only auto-creates the Engagement - so ensure the product type, product
+# and engagement exist via the API first. JSON bodies are sent from temp files
+# (`-d @file`) because PowerShell 5.1 mangles arguments containing double
+# quotes (classic native-argument quoting bug).
+$ddCurl = $curl
+$ddToken = $token
+$ddApiBase = "$($url.TrimEnd('/'))/api/v2/"
+
+# Helper: run a curl request and return [pscustomobject]@{ Code; Text }.
+function Invoke-DD {
+    param([string]$Method, [string]$Path, [string]$JsonBody = '')
+    $a = @('-s', '-S', '-X', $Method, ($script:ddApiBase + $Path),
+           '-H', "Authorization: Token $script:ddToken")
+    if ($JsonBody) {
+        $file = Join-Path ([System.IO.Path]::GetTempPath()) ("dd_json_" + [guid]::NewGuid().ToString('N') + ".json")
+        [System.IO.File]::WriteAllText($file, $JsonBody)
+        try {
+            $a += @('-H', 'Content-Type: application/json', '-d', "@$file")
+            $out = & $script:ddCurl @a '-w' "`n%{http_code}" 2>$null
+        } finally {
+            Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+        }
+    } else {
+        $out = & $script:ddCurl @a '-w' "`n%{http_code}" 2>$null
+    }
+    $code = ''
+    if ($out) { $code = ($out | Select-Object -Last 1).ToString().Trim() }
+    $text = ''
+    if ($out) { $text = ($out | Select-Object -SkipLast 1) -join "`n" }
+    return [pscustomobject]@{ Code = $code; Text = $text }
+}
+
+# Product Type (GET id after create/lookup).
+$productTypeId = ''
 if ($ProductType) {
-    $ptUrl = "$($url.TrimEnd('/'))/api/v2/product_types/"
-    $escaped = ($ProductType -replace '\\', '\\') -replace '"', '\"'
-    $ptBody = '{"name":"' + $escaped + '"}'
-    $ptFile = Join-Path ([System.IO.Path]::GetTempPath()) ("dd_pt_" + [guid]::NewGuid().ToString('N') + ".json")
-    [System.IO.File]::WriteAllText($ptFile, $ptBody)
-    try {
-        $ptOutput = & $curl '-s' '-S' '-X' 'POST' $ptUrl `
-            '-H' "Authorization: Token $token" `
-            '-H' 'Content-Type: application/json' `
-            '-d' "@$ptFile" `
-            '-w' "`n%{http_code}" 2>$null
-        $ptHttp = ''
-        if ($ptOutput) { $ptHttp = ($ptOutput | Select-Object -Last 1).ToString().Trim() }
-        $ptText = ($ptOutput | Select-Object -SkipLast 1) -join ' '
-        if ($ptHttp -eq '201' -or $ptHttp -eq '200') {
-            Write-Host "Created product type '$ProductType'."
-        } elseif ($ptHttp -eq '400' -and $ptText -match 'already exists') {
+    $escPt = ($ProductType -replace '\\', '\\') -replace '"', '\"'
+    $pt = Invoke-DD 'POST' 'product_types/' ('{"name":"' + $escPt + '"}')
+    if ($pt.Code -in '200', '201' -and $pt.Text) {
+        $productTypeId = [string]($pt.Text | ConvertFrom-Json).id
+        Write-Host "Created product type '$ProductType'."
+    } else {
+        $ptList = Invoke-DD 'GET' ('product_types/?name=' + [uri]::EscapeDataString($ProductType))
+        if ($ptList.Code -eq '200' -and $ptList.Text) {
+            foreach ($item in ($ptList.Text | ConvertFrom-Json).results) {
+                if ($item.name -eq $ProductType) { $productTypeId = [string]$item.id; break }
+            }
+        }
+        if ($productTypeId) {
             Write-Host "Product type '$ProductType' already exists."
         } else {
-            Write-Host "WARNING: could not ensure product type '$ProductType' (HTTP $ptHttp) - continuing." -ForegroundColor Yellow
+            Write-Host "WARNING: could not ensure product type '$ProductType' (HTTP $($pt.Code)) - continuing." -ForegroundColor Yellow
         }
-    } finally {
-        Remove-Item -LiteralPath $ptFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Product (must belong to the product type).
+$productId = ''
+if ($productTypeId -and $Product) {
+    $pList = Invoke-DD 'GET' ('products/?name=' + [uri]::EscapeDataString($Product))
+    if ($pList.Code -eq '200' -and $pList.Text) {
+        foreach ($item in ($pList.Text | ConvertFrom-Json).results) {
+            if ($item.name -eq $Product -and [string]$item.prod_type -eq $productTypeId) {
+                $productId = [string]$item.id
+                break
+            }
+        }
+    }
+    if ($productId) {
+        Write-Host "Product '$Product' already exists."
+    } else {
+        $escP = ($Product -replace '\\', '\\') -replace '"', '\"'
+        $p = Invoke-DD 'POST' 'products/' ('{"name":"' + $escP + '","prod_type":' + $productTypeId + ',"description":"' + $escP + '"}')
+        if ($p.Code -in '200', '201' -and $p.Text) {
+            $productId = [string]($p.Text | ConvertFrom-Json).id
+            Write-Host "Created product '$Product'."
+        } else {
+            Write-Host "WARNING: could not ensure product '$Product' (HTTP $($p.Code)) - continuing." -ForegroundColor Yellow
+        }
+    }
+}
+
+# Engagement (auto-created by the import in some versions, but ensure it anyway).
+if ($productId -and $Engagement) {
+    $eList = Invoke-DD 'GET' ('engagements/?product=' + $productId)
+    $engagementExists = $false
+    if ($eList.Code -eq '200' -and $eList.Text) {
+        foreach ($item in ($eList.Text | ConvertFrom-Json).results) {
+            if ($item.name -eq $Engagement) { $engagementExists = $true; break }
+        }
+    }
+    if ($engagementExists) {
+        Write-Host "Engagement '$Engagement' already exists."
+    } else {
+        $escE = ($Engagement -replace '\\', '\\') -replace '"', '\"'
+        $eBody = '{"name":"' + $escE + '","product":' + $productId + ',"engagement_type":"CI/CD","target_start":"' + $today + '","target_end":"' + $today + '"}'
+        $e = Invoke-DD 'POST' 'engagements/' $eBody
+        if ($e.Code -in '200', '201') {
+            Write-Host "Created engagement '$Engagement'."
+        } else {
+            Write-Host "WARNING: could not ensure engagement '$Engagement' (HTTP $($e.Code)) - continuing." -ForegroundColor Yellow
+        }
     }
 }
 
@@ -158,6 +232,7 @@ foreach ($file in ($scanTypes.Keys | Sort-Object)) {
         "-F", "verified=true",
         "-F", "close_old_findings=true",
         "-F", "deduplication_on_engagement=true",
+        "-F", "auto_create_context=true",
         "-F", "product_name=$Product",
         "-F", "engagement_name=$Engagement",
         "-F", "scan_type=$scanType",

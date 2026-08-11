@@ -25,8 +25,9 @@ reports are still generated and published.
 The DefectDojo stage is skipped unless `EnableDefectDojo` is `true`. When
 enabled it downloads each scanner's own artifact and imports its report via the
 DefectDojo API v2 (`import-scan`/`reimport-scan`): TruffleHog, Semgrep JSON,
-MSDO SARIF and ZAP XML. Product/engagement context is auto-created on the
-DefectDojo side, so nothing needs to be set up in the UI.
+MSDO SARIF and ZAP XML. Product type, product and engagement are created by the
+script via the DefectDojo API if they don't exist yet, so nothing needs to be
+set up in the UI.
 
 ## Layout
 
@@ -92,7 +93,8 @@ enable it:
    API v2 token (`DefectDojoApiToken`) as a **secret** - use a variable group
    / library secret rather than editing the variable file.
 3. Optionally change `DefectDojoProductName`, `DefectDojoProductTypeName` and
-   `DefectDojoEngagementName`; DefectDojo auto-creates them on first import.
+   `DefectDojoEngagementName`; the script creates them via the API on first
+   import.
 4. Make sure the job's agent pool (`DefectDojoPool`, e.g. `cloud-poc`) can
    reach the server. If you have a dedicated agent for it, set
    `DefectDojoAgentName` (e.g. `defect-dojo`) and the job is pinned to that
