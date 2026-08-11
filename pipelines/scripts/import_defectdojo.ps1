@@ -110,22 +110,33 @@ if ($Insecure) { $baseArgs += '-k' }
 $baseArgs += @('-X', 'POST', $apiUrl, '-H', "Authorization: Token $token")
 
 # The import-scan endpoint does NOT auto-create the Product Type, so ensure it
-# exists first via the product_types API (HTTP 400 = name already exists).
+# exists first via the product_types API. The JSON body is written to a temp
+# file and passed as `-d @file` because PowerShell 5.1 mangles arguments that
+# contain double quotes (classic native-argument quoting bug).
 if ($ProductType) {
     $ptUrl = "$($url.TrimEnd('/'))/api/v2/product_types/"
-    $ptOutput = & $curl '-s' '-S' '-X' 'POST' $ptUrl `
-        '-H' "Authorization: Token $token" `
-        '-H' 'Content-Type: application/json' `
-        '-d' ('{"name":"' + $ProductType + '"}') `
-        '-w' "`n%{http_code}" 2>$null
-    $ptHttp = ''
-    if ($ptOutput) { $ptHttp = ($ptOutput | Select-Object -Last 1).ToString().Trim() }
-    if ($ptHttp -eq '201' -or $ptHttp -eq '200') {
-        Write-Host "Created product type '$ProductType'."
-    } elseif ($ptHttp -eq '400') {
-        Write-Host "Product type '$ProductType' already exists."
-    } else {
-        Write-Host "WARNING: could not ensure product type '$ProductType' (HTTP $ptHttp) - continuing." -ForegroundColor Yellow
+    $escaped = ($ProductType -replace '\\', '\\') -replace '"', '\"'
+    $ptBody = '{"name":"' + $escaped + '"}'
+    $ptFile = Join-Path ([System.IO.Path]::GetTempPath()) ("dd_pt_" + [guid]::NewGuid().ToString('N') + ".json")
+    [System.IO.File]::WriteAllText($ptFile, $ptBody)
+    try {
+        $ptOutput = & $curl '-s' '-S' '-X' 'POST' $ptUrl `
+            '-H' "Authorization: Token $token" `
+            '-H' 'Content-Type: application/json' `
+            '-d' "@$ptFile" `
+            '-w' "`n%{http_code}" 2>$null
+        $ptHttp = ''
+        if ($ptOutput) { $ptHttp = ($ptOutput | Select-Object -Last 1).ToString().Trim() }
+        $ptText = ($ptOutput | Select-Object -SkipLast 1) -join ' '
+        if ($ptHttp -eq '201' -or $ptHttp -eq '200') {
+            Write-Host "Created product type '$ProductType'."
+        } elseif ($ptHttp -eq '400' -and $ptText -match 'already exists') {
+            Write-Host "Product type '$ProductType' already exists."
+        } else {
+            Write-Host "WARNING: could not ensure product type '$ProductType' (HTTP $ptHttp) - continuing." -ForegroundColor Yellow
+        }
+    } finally {
+        Remove-Item -LiteralPath $ptFile -Force -ErrorAction SilentlyContinue
     }
 }
 
