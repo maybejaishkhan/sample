@@ -22,6 +22,16 @@ variables:
   - name: SampleProjectPath
     value: src/WebSample/WebSample.csproj
 
+  # Directory (on the agent) where the Build stage stages its output before it
+  # is published as the ArtifactName artifact.
+  - name: BuildOutputDir
+    value: $(Build.ArtifactStagingDirectory)/out
+
+  # File that must be present after a publish-mode build, proving the build
+  # produced something deployable.
+  - name: SampleArtifactFileName
+    value: WebSample.dll
+
   # Target framework used for the sample publish. Matches the .NET SDK pinned
   # in this repository's global.json.
   - name: PublishFramework

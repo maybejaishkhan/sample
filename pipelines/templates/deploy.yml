@@ -24,17 +24,18 @@ stages:
             inputs:
               buildType: current
               artifactName: $(ArtifactName)
-              targetPath: $(Pipeline.Workspace)/drop
+              targetPath: $(DeploySourcePath)
 
           - task: PowerShell@2
             displayName: Deploy to $(SitePath)
             inputs:
-              filePath: $(System.DefaultWorkingDirectory)/pipelines/scripts/deploy.ps1
+              filePath: $(System.DefaultWorkingDirectory)/$(ScriptsDir)/deploy.ps1
               arguments: >-
                 -SitePath "$(SitePath)"
-                -SourcePath "$(Pipeline.Workspace)/drop"
+                -SourcePath "$(DeploySourcePath)"
                 -WindowsServiceName "$(WindowsServiceName)"
                 -ApplicationUrl "$(ApplicationUrl)"
                 -StartCommand "$(StartCommand)"
                 -WaitTimeoutSeconds $(WaitTimeoutSeconds)
                 -ProbeIntervalSeconds $(ProbeIntervalSeconds)
+                -SampleArtifactFileName "$(SampleArtifactFileName)"

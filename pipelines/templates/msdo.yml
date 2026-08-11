@@ -26,9 +26,9 @@ stages:
 
           # Scan ---------------------------------------------------------------
           # The MSDO task publishes its SARIF to a pipeline artifact named
-          # 'CodeAnalysisLogs' (see artifactName below); it does NOT write into
-          # the reports directory. The step after the scan downloads that
-          # artifact and consolidates it to the canonical name.
+          # 'CodeAnalysisLogs' (see MsdoCodeAnalysisArtifact below); it does NOT
+          # write into the reports directory. The step after the scan downloads
+          # that artifact and consolidates it to the canonical name.
           - task: MicrosoftSecurityDevOps@1
             displayName: Run MSDO scan
             continueOnError: true
@@ -38,17 +38,17 @@ stages:
               config: ''
               tools: $(MsdoTools)
               publish: true
-              artifactName: CodeAnalysisLogs
+              artifactName: $(MsdoCodeAnalysisArtifact)
 
           # Download the SARIF artifact back into the workspace. Best-effort:
           # if the scan produced nothing, the artifact does not exist and this
           # step fails silently.
           - task: DownloadPipelineArtifact@2
-            displayName: Download MSDO SARIF (CodeAnalysisLogs)
+            displayName: Download MSDO SARIF ($(MsdoCodeAnalysisArtifact))
             continueOnError: true
             inputs:
               buildType: current
-              artifactName: CodeAnalysisLogs
+              artifactName: $(MsdoCodeAnalysisArtifact)
               targetPath: $(Pipeline.Workspace)/msdo
 
           # The exact SARIF file name/layout inside the artifact can vary, so

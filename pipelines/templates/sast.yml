@@ -35,9 +35,10 @@ stages:
           - script: |
               set -e
               VERSION="$(TrufflehogVersion)"
+              ARCH="$(TrufflehogArch)"
               TMP_DIR=$(mktemp -d)
               curl -sSL \
-                "https://github.com/trufflesecurity/trufflehog/releases/download/v${VERSION}/trufflehog_${VERSION}_linux_amd64.tar.gz" \
+                "https://github.com/trufflesecurity/trufflehog/releases/download/v${VERSION}/trufflehog_${VERSION}_${ARCH}.tar.gz" \
                 -o "${TMP_DIR}/trufflehog.tar.gz"
               tar -xzf "${TMP_DIR}/trufflehog.tar.gz" -C "${TMP_DIR}"
               sudo install "${TMP_DIR}/trufflehog" /usr/local/bin/trufflehog

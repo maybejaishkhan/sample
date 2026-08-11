@@ -45,7 +45,8 @@ param(
     [string]$ApplicationUrl = '',
     [string]$StartCommand = '',
     [int]$WaitTimeoutSeconds = 300,
-    [int]$ProbeIntervalSeconds = 5
+    [int]$ProbeIntervalSeconds = 5,
+    [string]$SampleArtifactFileName = 'WebSample.dll'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -105,8 +106,8 @@ elseif ($StartCommand) {
 
     # Pre-flight checks so a broken launch fails with a useful message instead of
     # silently timing out in the reachability probe below.
-    if (-not (Test-Path (Join-Path $SitePath 'WebSample.dll'))) {
-        throw "Deployment payload in $SitePath does not contain WebSample.dll."
+    if (-not (Test-Path (Join-Path $SitePath $SampleArtifactFileName))) {
+        throw "Deployment payload in $SitePath does not contain $SampleArtifactFileName."
     }
     $dotnetExe = Get-Command dotnet -ErrorAction SilentlyContinue
     if (-not $dotnetExe) {

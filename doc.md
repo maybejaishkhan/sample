@@ -16,9 +16,11 @@ Every push to `main`, `master`, or `develop` (and every PR against `main` or
 2. **Scans the source code** for security issues (static analysis).
 3. **Deploys** the built application to a Windows VM.
 4. **Scans the running application** (dynamic analysis).
-5. **Publishes** all scan results as reports that anyone can download.
+5. **Publishes** all scan results as an HTML report that anyone can download.
+6. **(Optional)** Uploads the scan results to a DefectDojo instance for central
+   triage.
 
-In short: **build → secure → deploy → test → report.**
+In short: **build → secure → deploy → test → report → (triage).**
 
 The pipeline is deliberately modular. The main entry file is thin and simply
 chains together one template per stage. Almost everything is configurable
@@ -44,17 +46,13 @@ Build ──► SAST ──► MSDO ──► Deploy ──► DAST ──► Pu
 | 3 | MSDO       | Hosted Windows agent  | Microsoft Security DevOps, produces a SARIF report               |
 | 4 | Deploy     | Self-hosted Windows VM | Copies the artifact to `C:\site` and starts the app             |
 | 5 | DAST       | Self-hosted Windows VM | OWASP ZAP scans the running app (spider + active scan)          |
-| 6 | Publish    | Hosted Linux agent    | Aggregates all findings and publishes reports (**always runs**) |
+| 6 | Publish    | Hosted Linux agent    | Aggregates findings into an HTML dashboard (**always runs**)     |
 | 7 | DefectDojo | `DefectDojoPool` agent | Uploads the scanner reports to a DefectDojo instance (**optional**) |
 
-```mermaid
-flowchart LR
-    A[Build] --> B[SAST] --> C[MSDO] --> D[Deploy] --> E[DAST] --> F[Publish]
-    B -->|always| F
-    C -->|always| F
-    E -->|always| F
-    F -->|EnableDefectDojo=true| G[DefectDojo]
-```
+> Diagram: a Mermaid source of this flow lives at `diagrams/pipeline-flow.mmd`
+> (git-ignored; render it with any Mermaid tool or paste it into
+> mermaid.live). It is kept out of this document so the doc renders cleanly on
+> plain markdown viewers.
 
 **Key design decision:** the **Publish** stage uses `condition: always()`. Even
 if a security stage fails or is skipped, the reports are still generated and
@@ -71,6 +69,7 @@ DefectDojo API v2 (see `scripts/import_defectdojo.ps1`).
 ```
 ├── doc.md                      # this document
 ├── global.json                 # pins the .NET SDK version used to build
+├── diagrams/                   # Mermaid diagram sources (git-ignored, local-only)
 ├── src/
 │   └── WebSample/              # sample ASP.NET Core web app (net10.0)
 │       ├── WebSample.csproj
@@ -144,8 +143,9 @@ Produces a single deployable artifact called `drop`.
 
 - **Publish mode** (default, `BuildMode = publish`): runs
   `dotnet restore` + `dotnet publish` on `src/WebSample/WebSample.csproj`
-  (framework `net10.0`, configuration `Release`), verifies `WebSample.dll` was
-  produced, then publishes it as the `drop` artifact.
+  (framework `net10.0`, configuration `Release`), verifies the output file
+  named by `SampleArtifactFileName` (`WebSample.dll`) was produced in
+  `BuildOutputDir`, then publishes it as the `drop` artifact.
 - **Copy mode** (`BuildMode = copy`): instead of compiling, it packages a
   directory verbatim (excluding `.git`, `bin`, `obj`). Useful for static
   content or pre-compiled output.
@@ -184,9 +184,10 @@ the repository and produces a consolidated SARIF file.
 Flow inside the job:
 
 1. `MicrosoftSecurityDevOps@1` task runs the scan. It publishes its SARIF as a
-   pipeline artifact named `CodeAnalysisLogs` (this is the tool's own contract —
-   the task does **not** write into our reports folder).
-2. The job downloads `CodeAnalysisLogs` back and consolidates the first `*.sarif`
+   pipeline artifact named by `MsdoCodeAnalysisArtifact` (default
+   `CodeAnalysisLogs` — this is the tool's own contract; the task does **not**
+   write into our reports folder).
+2. The job downloads that artifact back and consolidates the first `*.sarif`
    file into `reports/raw/msdo.sarif`.
 3. Results are archived as the `msdo` artifact.
 4. A policy gate runs (same `policy_check.py`).
@@ -197,8 +198,9 @@ your Azure DevOps organization (Marketplace → Manage extensions). Without it t
 
 ### Stage 4 — Deploy (`templates/deploy.yml`, self-hosted Windows VM)
 
-Downloads the `drop` artifact and runs `scripts/deploy.ps1`, which executes
-**directly on the VM** through the self-hosted agent:
+Downloads the `drop` artifact into `DeploySourcePath` and runs
+`scripts/deploy.ps1`, which executes **directly on the VM** through the
+self-hosted agent:
 
 1. **Stop** the Windows service (`WindowsServiceName`, e.g. `WebSample`).
 2. **Copy** the new build output into `C:\site` with `robocopy`.
@@ -301,7 +303,11 @@ variable group).
 | `PythonVersion`        | `3.11`                   | Python used by report scripts    |
 | `RawReportsDirFull`    | `$(Build.ArtifactStagingDirectory)/reports/raw` | Where raw scanner files land |
 | `HtmlReportsDirFull`   | `.../reports/html`       | Where the HTML dashboard goes    |
-| `SummaryReportsDirFull`| `.../reports/summary`    | Where summaries go               |
+| `SummaryReportsDirFull`| `.../reports/summary`    | Where the aggregated `combined.json` goes |
+| `CombinedReportFile`   | `combined.json`          | Aggregated findings file name    |
+| `HtmlReportFile`       | `index.html`             | Dashboard file name              |
+| `ReportsHtmlArtifact`  | `reports-html`           | Dashboard artifact name (Publish stage) |
+| `ScriptsDir`           | `pipelines/scripts`      | Where the Python scripts live    |
 
 Reports are always written to the agent's staging area — **never committed to
 the repository**.
@@ -316,31 +322,40 @@ the repository**.
 | `PublishFramework` | `net10.0`                                  | Target framework (matches `global.json`)   |
 | `BuildMode`        | `publish`                                  | `publish` or `copy`                        |
 | `CopySourcePath`   | `$(Build.SourcesDirectory)`                | Source path for `copy` mode                |
+| `BuildOutputDir`   | `$(Build.ArtifactStagingDirectory)/out`    | Where the build stages its output          |
+| `SampleArtifactFileName` | `WebSample.dll`                       | File that must exist after publish (used by Build and Deploy) |
 
 ### `security.yml` — scanner settings
 
 Key items: `SemgrepRules` (`p/security-audit`), `SemgrepVersion` (empty = latest),
-`TrufflehogVersion`, `MsdoPolicy` (`azuredevops`), plus:
+`TrufflehogVersion`, `TrufflehogArch` (`linux_amd64`), `MsdoPolicy`
+(`azuredevops`), plus:
 
 - **Policy gates:** `FailOnCritical = true`, `FailOnHigh = true` — findings at
-  these severities fail the job.
+  these severities fail the job. TruffleHog findings are always mapped to
+  `high` (verified or not), so with `FailOnHigh = true` even *unverified*
+  secrets fail the build.
 - **Report file names:** `semgrep.json`, `semgrep.sarif`, `trufflehog.json`,
   `msdo.sarif`, `zap.json`, `zap.xml`, `zap.html`. These must match what the
   scanners write and what the Python parsers expect.
-- **Artifact names:** `trufflehog`, `semgrep`, `msdo`, `zap` — the Publish stage
-  downloads these by name, so keep them in sync if renamed.
+- **Artifact names:** `trufflehog`, `semgrep`, `msdo`, `zap` — the Publish and
+  DefectDojo stages download these by name, so keep them in sync if renamed.
+- **MSDO:** `MsdoCodeAnalysisArtifact` (default `CodeAnalysisLogs`) is the name
+  of the pipeline artifact the MSDO task publishes its SARIF to.
 - **DefectDojo:** `EnableDefectDojo` (default `false`) turns the optional
   DefectDojo stage on/off; `DefectDojoUrl` + `DefectDojoApiToken` (a **secret**)
-  point at the instance; `DefectDojoProductName` / `DefectDojoEngagementName`
-  select (and create) the product type/product/engagement; `DefectDojoImportMode`
-  controls `import` vs `reimport`; `DefectDojoPool` selects the agent pool
-  (defaults to the hosted Linux image).
+  point at the instance; `DefectDojoProductName` / `DefectDojoProductTypeName` /
+  `DefectDojoEngagementName` select (and create) the product type/product/
+  engagement; `DefectDojoImportMode` controls `import` vs `reimport`;
+  `DefectDojoPool` + `DefectDojoAgentName` select the agent pool and (optionally)
+  pin the job to a specific agent.
 
 ### `deployment.yml` — VM + DAST settings
 
 | Variable             | Default                                           | Purpose                                  |
 |----------------------|---------------------------------------------------|------------------------------------------|
 | `VmPool`             | `cloud-poc`                                       | Self-hosted agent pool on the VM         |
+| `DeploySourcePath`   | `$(Pipeline.Workspace)/drop`                      | Where the Deploy job downloads the artifact |
 | `SitePath`           | `C:\site`                                         | Where the app is deployed on the VM      |
 | `ApplicationUrl`     | `http://localhost:5000`                           | Reachability probe + DAST target         |
 | `WindowsServiceName` | `WebSample`                                       | Windows service that hosts the app (stopped/started around the copy) |
@@ -351,7 +366,7 @@ Key items: `SemgrepRules` (`p/security-audit`), `SemgrepVersion` (empty = latest
 | `ZapTarget`          | `$(ApplicationUrl)`                               | URL ZAP scans                            |
 | `ZapTimeout`         | `600`                                             | ZAP spider + active-scan budget          |
 | `ZapApiPort`         | `8090`                                            | ZAP REST API port                        |
-| `PublishReports`     | `true`                                            | Set `false` to publish only raw reports  |
+| `PublishReports`     | `true`                                            | Set `false` to skip the HTML dashboard entirely |
 
 **Hosting modes are mutually exclusive.** If `WindowsServiceName` is set, the
 app is stopped/started as a service; otherwise `StartCommand` launches a
@@ -374,6 +389,12 @@ default both `true`). Its exit codes:
 | 0    | No findings above the threshold                     |
 | 1    | Findings above the threshold (gate violated)        |
 | 2    | Report missing/corrupt (a crashed scanner)          |
+
+**TruffleHog special case:** every TruffleHog finding is normalized to `high`,
+verified or not. TruffleHog's own `--fail` only exits non-zero for *verified*
+secrets, so without this mapping a leak that couldn't be verified would silently
+pass the gate. The finding message still marks verified secrets with
+`(verified)`.
 
 Because the gate runs on `condition: always()`, a missing report also fails the
 job — a broken scanner can never silently pass.
@@ -412,6 +433,21 @@ pipelines/scripts/generate_html.py --combined reports/summary/combined.json --ou
    extensions → Microsoft Security DevOps). Required for the MSDO stage.
 3. Make sure the build can use hosted agents (`ubuntu-latest`,
    `windows-latest`) — no extra setup needed for those.
+
+### DefectDojo instance (optional)
+
+Only needed when `EnableDefectDojo` is `true`:
+
+1. A running DefectDojo instance (this setup uses one deployed with Docker on
+   an Ubuntu server).
+2. A base URL (`DefectDojoUrl`, e.g. `http://<server>:<port>`) reachable from
+   the `DefectDojoPool` agent.
+3. An **API v2 token** (`DefectDojoApiToken`) created in DefectDojo: user icon
+   (top right) → **API v2 Key** → copy the generated key. Store it as a
+   **secret** (variable group / library secret), never in a variable file.
+   It must belong to a user with permission to create products/engagements.
+4. Nothing needs to be created in the UI: the import script creates the product
+   type, product and engagement via the API on first import.
 
 ### The Windows VM (self-hosted agent)
 
@@ -471,6 +507,17 @@ Practical guidance based on real issues hit during development.
 | `MicrosoftSecurityDevOps@1` task not found | Extension not installed in the organization | Install the Microsoft Security DevOps extension |
 | `MSDO produced no SARIF output` | `policy` set to an invalid value (e.g. `GitHub`), or looking for output in the wrong directory | Use `azuredevops`/`microsoft`/`none`; the task publishes SARIF to the `CodeAnalysisLogs` artifact, which the job downloads |
 
+### DefectDojo
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `403 {"detail": "Invalid token."}` | The `DefectDojoApiToken` is not a valid API v2 key (e.g. a login password), or it was revoked/regenerated | Create a key in DefectDojo (user icon → API v2 Key) and set it as a secret variable |
+| `400 Product Type "..." does not exist` | The import endpoint does not auto-create the Product Type | The script now creates it via `POST /api/v2/product_types/`; if it still fails, check the token's permissions |
+| `400 Product "..." does not exist in Product_Type "..."` | The import endpoint does not auto-create the Product | The script now creates it via `POST /api/v2/products/` |
+| Script reports "invalid scan type mapping 'System.Collections.Hashtable'" | The PowerShell task mangles CLI arguments containing `=` | The mapping is passed via the `DEFECTDOJO_SCAN_TYPES` env var, not as a CLI argument |
+| Imports fail after a product type "already exists" but DefectDojo says it does not | PowerShell 5.1 mangled the inline JSON body (`-d '{"name":...}'`), so the API rejected it | The script sends JSON from a temp file (`-d @file`) to avoid the 5.1 quoting bug |
+| Stage never runs | `EnableDefectDojo` is not `true` | Set `EnableDefectDojo: true` in `variables/security.yml` |
+
 ### Deploy / VM
 
 | Symptom | Likely cause | Fix |
@@ -525,7 +572,8 @@ the new report is uploaded too.
 ### Building a real application instead of the sample
 
 In `pipelines/variables/build.yml`, set `SampleProjectPath` to your real
-project (and keep `BuildMode = publish`). No template changes needed.
+project (and keep `BuildMode = publish`). If your main output assembly has a
+different name, set `SampleArtifactFileName` too. No template changes needed.
 
 ### Recommended production hardening (marked TODO in the code)
 
@@ -576,14 +624,11 @@ In `pipelines/variables/build.yml`:
 | `PublishFramework`  | Your target framework (e.g. `net8.0`)                     |
 | `BuildMode`         | Keep `publish`, or use `copy` to ship pre-built files     |
 | `ArtifactName`      | Keep `drop` unless you rename it consistently             |
+| `SampleArtifactFileName` | Your main output assembly (e.g. `MyApp.dll`)          |
 
-Two small code touches may be needed for a different app:
-
-- **`templates/build.yml`** verifies that `WebSample.dll` exists after publish.
-  Check for your assembly's name instead (or rename your output with
-  `<AssemblyName>` in the `.csproj`).
-- **`scripts/deploy.ps1`** pre-flight-checks for `WebSample.dll` in `C:\site`
-  before starting the app. Update that file name to match your app.
+`SampleArtifactFileName` is what the Build stage verifies after publishing and
+what `deploy.ps1` pre-flights in `SitePath`, so no template/script edits are
+needed when renaming your assembly.
 
 If your repo's SDK differs, either adjust `global.json` or remove it.
 

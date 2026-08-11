@@ -16,6 +16,11 @@ variables:
   - name: VmPool
     value: cloud-poc
 
+  # Directory on the agent where the Deploy job downloads the Build artifact
+  # (ArtifactName) before copying it to SitePath.
+  - name: DeploySourcePath
+    value: $(Pipeline.Workspace)/drop
+
   # Physical path on the VM where the application is deployed.
   - name: SitePath
     value: C:\site

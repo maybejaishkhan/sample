@@ -65,22 +65,22 @@ stages:
           - script: |
               python3 "$(ScriptsDir)/aggregate.py" \
                 --raw "$(RawReportsDirFull)" \
-                --output "$(SummaryReportsDirFull)/combined.json"
+                --output "$(SummaryReportsDirFull)/$(CombinedReportFile)"
             displayName: Aggregate scanner findings
             condition: succeededOrFailed()
 
           - script: |
               python3 "$(ScriptsDir)/generate_html.py" \
-                --combined "$(SummaryReportsDirFull)/combined.json" \
-                --output "$(HtmlReportsDirFull)/index.html"
+                --combined "$(SummaryReportsDirFull)/$(CombinedReportFile)" \
+                --output "$(HtmlReportsDirFull)/$(HtmlReportFile)"
             displayName: Generate HTML dashboard
             condition: and(succeededOrFailed(), eq(variables['PublishReports'], 'true'))
 
           # --- Publish --------------------------------------------------------
           - task: PublishPipelineArtifact@1
-            displayName: Publish artifact (reports-html)
+            displayName: Publish artifact ($(ReportsHtmlArtifact))
             condition: eq(variables['PublishReports'], 'true')
             inputs:
               targetPath: $(HtmlReportsDirFull)
-              artifactName: reports-html
+              artifactName: $(ReportsHtmlArtifact)
               publishLocation: pipeline

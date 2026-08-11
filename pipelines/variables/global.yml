@@ -34,6 +34,15 @@ variables:
   - name: SummaryReportsDirFull
     value: $(Build.ArtifactStagingDirectory)/reports/summary
 
+  # Names of the files produced by the report aggregation scripts and the
+  # single dashboard artifact published by the Publish stage.
+  - name: CombinedReportFile
+    value: combined.json
+  - name: HtmlReportFile
+    value: index.html
+  - name: ReportsHtmlArtifact
+    value: reports-html
+
   # Where the Python aggregation scripts live (relative to the repo root).
   - name: ScriptsDir
     value: pipelines/scripts

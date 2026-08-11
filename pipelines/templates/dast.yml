@@ -31,13 +31,16 @@ stages:
             displayName: Run ZAP scan against $(ZapTarget)
             continueOnError: true
             inputs:
-              filePath: $(System.DefaultWorkingDirectory)/pipelines/scripts/zap_scan.ps1
+              filePath: $(System.DefaultWorkingDirectory)/$(ScriptsDir)/zap_scan.ps1
               arguments: >-
                 -TargetUrl "$(ZapTarget)"
                 -OutputDirectory "$(RawReportsDirFull)"
                 -ZapPath "$(ZapPath)"
                 -ApiPort $(ZapApiPort)
                 -TimeoutSeconds $(ZapTimeout)
+                -JsonReportName "$(ZapJsonReport)"
+                -XmlReportName "$(ZapXmlReport)"
+                -HtmlReportName "$(ZapHtmlReport)"
   
           # Archive (always, so output is never lost) --------------------
           # continueOnError: re-running a stage tries to publish the same

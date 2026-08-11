@@ -18,6 +18,9 @@ obj/
 __pycache__/
 *.pyc
 
+# Mermaid diagram sources (rendered/committed separately, kept out of git).
+diagrams/
+
 # IDE / OS
 .vs/
 .idea/

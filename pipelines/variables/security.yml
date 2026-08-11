@@ -31,6 +31,11 @@ variables:
   - name: TrufflehogVersion
     value: 3.63.10
 
+  # Architecture part of the TruffleHog release asset file name. Only change
+  # this if the agent is not an x64 Linux machine.
+  - name: TrufflehogArch
+    value: linux_amd64
+
   # Git history depth scanned by TruffleHog ('' = full history).
   - name: TrufflehogDepth
     value: ''
@@ -64,8 +69,8 @@ variables:
   - name: DefectDojoApiToken
     value: ''
 
-  # Product / product type / engagement to import into. DefectDojo
-  # auto-creates them when they do not exist yet.
+  # Product / product type / engagement to import into. The import script
+  # creates them via the API on first import when they do not exist yet.
   - name: DefectDojoProductName
     value: sample-app
   - name: DefectDojoProductTypeName
@@ -89,6 +94,12 @@ variables:
   # Tools executed by MSDO. Leave empty to use the MSDO default tool set.
   - name: MsdoTools
     value: ''
+
+  # Name of the pipeline artifact the MicrosoftSecurityDevOps task publishes
+  # its SARIF to (must match the task's artifactName input). The MSDO job
+  # downloads it and consolidates the first *.sarif to MsdoSarifReport.
+  - name: MsdoCodeAnalysisArtifact
+    value: CodeAnalysisLogs
 
   # ---------------------------------------------------------- Policy gates
   # If a scanner finds findings at these severities the job FAILS and later

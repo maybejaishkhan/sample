@@ -44,7 +44,7 @@ stages:
                 dotnet publish "$(SampleProjectPath)"
                 --configuration "$(BuildConfiguration)"
                 --framework "$(PublishFramework)"
-                --output "$(Build.ArtifactStagingDirectory)/out"
+                --output "$(BuildOutputDir)"
                 --no-restore
               workingDirectory: $(Build.SourcesDirectory)
             condition: eq(variables['BuildMode'], 'publish')
@@ -53,26 +53,26 @@ stages:
           # depends on this artifact being complete.
           - script: |
               set -e
-              test -f "$(Build.ArtifactStagingDirectory)/out/WebSample.dll" && \
-                echo "Publish output verified: WebSample.dll present"
+              test -f "$(BuildOutputDir)/$(SampleArtifactFileName)" && \
+                echo "Publish output verified: $(SampleArtifactFileName) present"
             displayName: Verify publish output
             condition: eq(variables['BuildMode'], 'publish')
 
           # Copy mode: package a directory without compiling.
           - script: |
               set -e
-              mkdir -p "$(Build.ArtifactStagingDirectory)/out"
+              mkdir -p "$(BuildOutputDir)"
               tar -C "$(CopySourcePath)" \
                   --exclude='.git' \
                   --exclude='bin' \
                   --exclude='obj' \
-                  -cf - . | tar -xf - -C "$(Build.ArtifactStagingDirectory)/out"
+                  -cf - . | tar -xf - -C "$(BuildOutputDir)"
             displayName: Copy source to staging
             condition: eq(variables['BuildMode'], 'copy')
 
           - task: PublishPipelineArtifact@1
             displayName: Publish artifact ($(ArtifactName))
             inputs:
-              targetPath: $(Build.ArtifactStagingDirectory)/out
+              targetPath: $(BuildOutputDir)
               artifactName: $(ArtifactName)
               publishLocation: pipeline
