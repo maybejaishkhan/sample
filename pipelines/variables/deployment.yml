@@ -70,10 +70,3 @@ variables:
   # ZAP daemon port used for the ZAP REST API.
   - name: ZapApiPort
     value: '8090'
-
-  # ------------------------------------------------------- Report publishing
-  # Set to false to skip HTML dashboard generation/publishing entirely. Only
-  # the per-scanner artifacts (trufflehog, semgrep, msdo, zap) are always
-  # published by the scanner jobs themselves.
-  - name: PublishReports
-    value: true

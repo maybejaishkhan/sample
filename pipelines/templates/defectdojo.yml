@@ -1,17 +1,16 @@
 # ==============================================================================
 # DefectDojo stage (optional).
 #
-# Uploads the aggregated scanner reports to a DefectDojo instance via its REST
-# API. Enabled with the `EnableDefectDojo` variable; when disabled the stage is
+# Uploads the scanner reports to a DefectDojo instance via its REST API.
+# Enabled with the `EnableDefectDojo` variable; when disabled the stage is
 # skipped entirely and the pipeline is unchanged.
 #
-# The stage depends on Publish and downloads each scanner's own artifact
-# (published by the SAST/MSDO/DAST jobs), so it imports exactly the same raw
-# reports that the HTML dashboard is built from:
+# The stage runs after SAST/DAST and downloads each scanner's own artifact
+# (published by the SAST/DAST jobs), so it imports exactly the raw reports
+# produced by the scans:
 #
 #   trufflehog.json -> Trufflehog Scan
 #   semgrep.json    -> Semgrep JSON Report
-#   msdo.sarif      -> SARIF
 #   zap.xml         -> ZAP Scan
 #
 # PREREQUISITES:
@@ -22,15 +21,17 @@
 #   * Provide the token via a secret (variable group / library secret) and
 #     override `DefectDojoUrl` per environment - never commit real values.
 #
-# Product / engagement / product type are auto-created by DefectDojo when they
-# do not exist yet (see the import script for the API call shape).
+# Product type, product and engagement are created via the API by the import
+# script when they do not exist yet (see the import script for the API call
+# shape).
 # ==============================================================================
 
 stages:
   - stage: DefectDojo
     displayName: DefectDojo
-    dependsOn: Publish
-    condition: eq(variables['EnableDefectDojo'], 'true')
+    dependsOn: [SAST, DAST]
+    # Upload whatever the scans produced, even if a scan stage failed.
+    condition: and(eq(variables['EnableDefectDojo'], 'true'), succeededOrFailed())
     pool: $(DefectDojoPool)
     jobs:
       - job: ImportScanResults
@@ -45,7 +46,7 @@ stages:
         steps:
           - checkout: self
 
-          # Raw reports published by the SAST/MSDO/DAST jobs. Each download is
+          # Raw reports published by the SAST/DAST jobs. Each download is
           # best-effort: a scanner that produced nothing simply contributes
           # nothing to the import.
           - task: DownloadPipelineArtifact@2
@@ -62,14 +63,6 @@ stages:
             inputs:
               buildType: current
               artifactName: $(SemgrepArtifact)
-              targetPath: $(RawReportsDirFull)
-
-          - task: DownloadPipelineArtifact@2
-            displayName: Download MSDO output
-            continueOnError: true
-            inputs:
-              buildType: current
-              artifactName: $(MsdoArtifact)
               targetPath: $(RawReportsDirFull)
 
           - task: DownloadPipelineArtifact@2
@@ -100,4 +93,4 @@ stages:
               DEFECTDOJO_API_TOKEN: $(DefectDojoApiToken)
               DEFECTDOJO_SCM_URI: $(Build.Repository.Uri)
               DEFECTDOJO_SCM_BRANCH: $(Build.SourceBranchName)
-              DEFECTDOJO_SCAN_TYPES: "$(TrufflehogJsonReport)=Trufflehog Scan,$(SemgrepJsonReport)=Semgrep JSON Report,$(MsdoSarifReport)=SARIF,$(ZapXmlReport)=ZAP Scan"
+              DEFECTDOJO_SCAN_TYPES: "$(TrufflehogJsonReport)=Trufflehog Scan,$(SemgrepJsonReport)=Semgrep JSON Report,$(ZapXmlReport)=ZAP Scan"

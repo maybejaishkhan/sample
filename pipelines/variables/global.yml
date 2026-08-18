@@ -5,7 +5,7 @@
 # to a single concern (build, security, deployment) live in their own file:
 #
 #   build.yml       - build/artifact settings
-#   security.yml    - SAST / MSDO scanner settings
+#   security.yml    - SAST scanner + DefectDojo settings
 #   deployment.yml  - VM deployment + DAST settings
 #
 # Only put settings here that are genuinely cross-cutting.
@@ -16,33 +16,16 @@ variables:
   - name: AgentImage
     value: ubuntu-latest
 
-  # Hosted image used by jobs that require Windows (e.g. MSDO).
-  - name: WindowsAgentImage
-    value: windows-latest
-
-  # Python version used by the report aggregation scripts.
+  # Python version used by the policy-check script.
   - name: PythonVersion
     value: '3.11'
 
-  # Fully qualified locations of the report folders (used by scripts/tasks).
+  # Fully qualified location of the report folder (used by scripts/tasks).
   # Reports are written to the agent's artifact staging area - NOT into the
-  # repository - and published as pipeline artifacts by the Publish stage.
+  # repository - and published as pipeline artifacts by the scanner jobs.
   - name: RawReportsDirFull
     value: $(Build.ArtifactStagingDirectory)/reports/raw
-  - name: HtmlReportsDirFull
-    value: $(Build.ArtifactStagingDirectory)/reports/html
-  - name: SummaryReportsDirFull
-    value: $(Build.ArtifactStagingDirectory)/reports/summary
 
-  # Names of the files produced by the report aggregation scripts and the
-  # single dashboard artifact published by the Publish stage.
-  - name: CombinedReportFile
-    value: combined.json
-  - name: HtmlReportFile
-    value: index.html
-  - name: ReportsHtmlArtifact
-    value: reports-html
-
-  # Where the Python aggregation scripts live (relative to the repo root).
+  # Where the Python scripts live (relative to the repo root).
   - name: ScriptsDir
     value: pipelines/scripts

@@ -4,7 +4,7 @@
 # Responsibilities:
 #   - produce a single deployable artifact
 #
-# No security tooling runs here - security is handled by the SAST and MSDO
+# No security tooling runs here - security is handled by the SAST and DAST
 # stages that follow.
 #
 # The artifact is produced one of two ways (see BuildMode in

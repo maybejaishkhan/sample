@@ -211,7 +211,7 @@ Presented by <b>Jay Ntongwe</b><br/>
 1. **Why change**: the manual FTP status quo
 2. **The vision**: cloud pipelines in Azure
 3. **Pipeline at a glance**
-4. **Stage-by-stage tour**: Build, SAST, MSDO, Deploy, DAST, Publish, DefectDojo
+4. **Stage-by-stage tour**: Build, SAST, Deploy, DAST, DefectDojo
 5. **Security-first design**: policy gates & reports
 
 </div>
@@ -288,7 +288,7 @@ Security, consistency, and trust in delivery are hard to achieve when the last m
 
 <div class="card">
 <h3>Automated end-to-end</h3>
-<p>Every push to <code>main</code>, <code>master</code> or <code>develop</code>: and every pull request against them: triggers the full pipeline automatically:</p>
+<p>Every push to <code>main</code> and every pull request against it triggers the full pipeline automatically:</p>
 <p><b>build → secure → deploy → test → report → (triage)</b></p>
 </div>
 
@@ -296,10 +296,9 @@ Security, consistency, and trust in delivery are hard to achieve when the last m
 <h3>Security by design</h3>
 <ul>
 <li><b>SAST</b>: static analysis & secret scanning</li>
-<li><b>MSDO</b>: Microsoft Security DevOps</li>
 <li><b>DAST</b>: dynamic testing of the live app</li>
 <li><b>Policy gates</b>: block critical & high findings</li>
-<li><b>Reports</b>: always published, never lost</li>
+<li><b>Reports</b>: per-scanner artifacts, kept even when a scan fails</li>
 </ul>
 </div>
 
@@ -318,7 +317,7 @@ Security, consistency, and trust in delivery are hard to achieve when the last m
 
 <div class="grid-3 small mt">
 
-<div class="card" style="text-align:center"><b class="accent">Always runs</b><br/>Publish reports even when a scan fails: findings are never lost.</div>
+<div class="card" style="text-align:center"><b class="accent">Never lost</b><br/>Each scanner publishes its raw artifact even when a scan fails: findings are never lost.</div>
 <div class="card" style="text-align:center"><b class="accent">Gated</b><br/>Critical/high findings fail the build before anything ships.</div>
 <div class="card" style="text-align:center"><b class="accent">Optional</b><br/>DefectDojo triage switches on via a single flag.</div>
 
@@ -332,11 +331,9 @@ Security, consistency, and trust in delivery are hard to achieve when the last m
 |---|-------|---------|---------|
 | 1 | **Build** | Hosted Linux | Publishes the app into the `drop` artifact |
 | 2 | **SAST** | Hosted Linux | TruffleHog (secrets) + Semgrep (code) in parallel |
-| 3 | **MSDO** | Hosted Windows | Microsoft Security DevOps → SARIF |
-| 4 | **Deploy** | Self-hosted Windows VM | Installs the app as a Windows service |
-| 5 | **DAST** | Self-hosted Windows VM | OWASP ZAP scans the running app |
-| 6 | **Publish** | Hosted Linux | Aggregates findings → HTML dashboard, <b>always runs</b> |
-| 7 | **DefectDojo** | `DefectDojoPool` agent | Uploads reports for central triage, <b>optional</b> |
+| 3 | **Deploy** | Self-hosted Windows VM | Installs the app as a Windows service |
+| 4 | **DAST** | Self-hosted Windows VM | OWASP ZAP scans the running app |
+| 5 | **DefectDojo** | `DefectDojoPool` agent | Uploads reports for central triage, <b>optional</b> |
 
 <div class="tiny mt">The main pipeline file is intentionally thin: it chains one template per stage. Most changes never touch pipeline logic.</div>
 
@@ -347,7 +344,7 @@ Security, consistency, and trust in delivery are hard to achieve when the last m
 
 <div class="rule"></div>
 
-###### Build → SAST → MSDO → Deploy → DAST → Publish → (DefectDojo)
+###### Build → SAST → Deploy → DAST → (DefectDojo)
 
 ---
 
@@ -387,25 +384,10 @@ Security, consistency, and trust in delivery are hard to achieve when the last m
 
 ---
 
-# MSDO & Deploy
-
-<div class="grid-2">
+# Deploy
 
 <div class="card">
-<h3><span class="pill pill-blue">3</span> MSDO</h3>
-<div class="tool-logo mb">
-<img src="https://avatars.githubusercontent.com/u/6154722?v=4" alt="Microsoft"/>
-<div><b>Microsoft Security DevOps</div>
-</div>
-<ul>
-<li>BinSkim, Bandit, Checkov, Terrascan, Trivy & more</li>
-<li>Runs on a hosted <b>Windows</b> agent</li>
-<li>Emits one consolidated <b>SARIF</b> report</li>
-</ul>
-</div>
-
-<div class="card">
-<h3><span class="pill pill-blue">4</span> Deploy</h3>
+<h3><span class="pill pill-blue">3</span> Deploy</h3>
 <ul>
 <li>Runs on the <b>self-hosted Windows VM</b> via agent pool <code>cloud-poc</code></li>
 <li>Stops the service → copies the artifact to <code>C:\site</code> → starts it</li>
@@ -414,16 +396,12 @@ Security, consistency, and trust in delivery are hard to achieve when the last m
 </ul>
 </div>
 
-</div>
-
 ---
 
-# DAST & Publish
-
-<div class="grid-2">
+# DAST
 
 <div class="card">
-<h3><span class="pill pill-blue">5</span> DAST</h3>
+<h3><span class="pill pill-blue">4</span> DAST</h3>
 <div class="tool-logo mb">
 <img src="https://avatars.githubusercontent.com/u/6716868?v=4" alt="OWASP ZAP"/>
 <div><b>OWASP ZAP</b>: already installed on the VM, never downloaded by the pipeline</div>
@@ -435,19 +413,6 @@ Security, consistency, and trust in delivery are hard to achieve when the last m
 </ul>
 </div>
 
-<div class="card">
-<h3><span class="pill pill-blue">6</span> Publish</h3>
-<ul>
-<li>Downloads every scanner's raw artifact</li>
-<li>Aggregates into one normalized <code>combined.json</code></li>
-<li>Renders a single-page <b>HTML dashboard</b> (severity cards + tables)</li>
-<li>Publishes <code>reports-html</code> + per-scanner artifacts</li>
-<li><b>Runs even when scans fail</b>: <code>condition: always()</code></li>
-</ul>
-</div>
-
-</div>
-
 ---
 
 # DefectDojo: central triage (optional)
@@ -455,7 +420,7 @@ Security, consistency, and trust in delivery are hard to achieve when the last m
 <div class="grid-2">
 
 <div class="card">
-<h3><span class="pill pill-green">7</span> Optional, flag-driven</h3>
+<h3><span class="pill pill-green">5</span> Optional, flag-driven</h3>
 <div class="tool-logo mb">
 <img src="https://avatars.githubusercontent.com/u/35606478?v=4" alt="DefectDojo"/>
 <div><b>DefectDojo</b>: single source of truth for findings</div>
@@ -474,14 +439,13 @@ Security, consistency, and trust in delivery are hard to achieve when the last m
 <tr><th>Report</th><th>DefectDojo type</th></tr>
 <tr><td><code>trufflehog.json</code></td><td>Trufflehog Scan</td></tr>
 <tr><td><code>semgrep.json</code></td><td>Semgrep JSON Report</td></tr>
-<tr><td><code>msdo.sarif</code></td><td>SARIF</td></tr>
 <tr><td><code>zap.xml</code></td><td>ZAP Scan</td></tr>
 </table>
 </div>
 
 </div>
 
-<div class="tiny mt">All scanners → one dashboard + one triage backlog. Findings get tracked, assigned, and closed: not just printed.</div>
+<div class="tiny mt">Each scanner's report is published as its own artifact + optional DefectDojo triage. Findings get tracked, assigned, and closed: not just printed.</div>
 
 ---
 
@@ -518,14 +482,14 @@ Security, consistency, and trust in delivery are hard to achieve when the last m
 <li>Findings above the threshold <b>fail the job</b> → no risky deploy</li>
 <li>TruffleHog findings are always <b>high</b>: even unverified secrets fail</li>
 <li>A <b>missing/corrupt report</b> also fails (exit code 2): a broken scanner can never silently pass</li>
-<li>Deploy/DAST are skipped on failure, but <b>Publish still runs</b></li>
+<li>Deploy/DAST are skipped on failure, but every scanner still publishes its raw artifact</li>
 </ul>
 </div>
 
 </div>
 
 <div class="quote">
-Gates make security a <b>hard requirement</b>, not a nice-to-have: while the always-on Publish stage guarantees we never lose the evidence.
+Gates make security a <b>hard requirement</b>, not a nice-to-have: while every scanner publishing its raw artifact even on failed runs guarantees we never lose the evidence.
 </div>
 
 ---
@@ -574,10 +538,10 @@ Gates make security a <b>hard requirement</b>, not a nice-to-have: while the alw
 <table>
 <tr><th></th><th>Before: manual FTP</th><th>After: cloud pipelines</th></tr>
 <tr><td><b>Delivery</b></td><td class="bad">Hand-built, manually uploaded</td><td class="ok">Automated build → artifact on every push & PR</td></tr>
-<tr><td><b>Security</b></td><td class="bad">None at delivery time</td><td class="ok">SAST + MSDO + DAST, gated on critical/high</td></tr>
+<tr><td><b>Security</b></td><td class="bad">None at delivery time</td><td class="ok">SAST + DAST, gated on critical/high</td></tr>
 <tr><td><b>Traceability</b></td><td class="bad">"It's on the server, I think"</td><td class="ok">Every run is versioned & auditable</td></tr>
 <tr><td><b>Deploy</b></td><td class="bad">Drag-and-drop, error-prone</td><td class="ok">Robocopy to <code>C:\site</code>, service-managed, health-probed</td></tr>
-<tr><td><b>Findings</b></td><td class="bad">Never tracked centrally</td><td class="ok">HTML dashboard + optional DefectDojo triage</td></tr>
+<tr><td><b>Findings</b></td><td class="bad">Never tracked centrally</td><td class="ok">per-scanner artifacts + optional DefectDojo triage</td></tr>
 <tr><td><b>Consistency</b></td><td class="bad">Depends on the person</td><td class="ok">Identical, repeatable pipeline for everyone</td></tr>
 </table>
 
@@ -593,7 +557,7 @@ Gates make security a <b>hard requirement</b>, not a nice-to-have: while the alw
 <li><span class="ok">✓</span> <b>Shift-left security</b>: issues found before they ship</li>
 <li><span class="ok">✓</span> <b>Faster, safer releases</b>: CI/CD replaces the FTP chore</li>
 <li><span class="ok">✓</span> <b>Full audit trail</b>: who, what, when, and the evidence</li>
-<li><span class="ok">✓</span> <b>One view of risk</b>: dashboard + central triage</li>
+<li><span class="ok">✓</span> <b>One view of risk</b>: per-scanner artifacts + central triage</li>
 <li><span class="ok">✓</span> <b>Reusable</b>: onboard more apps with configuration only</li>
 </ul>
 </div>
@@ -632,7 +596,7 @@ Gates make security a <b>hard requirement</b>, not a nice-to-have: while the alw
 <ul>
 <li>Replace ZAP's open daemon key with a <b>real API key</b> stored as a secret</li>
 <li>Restrict what ZAP may crawl</li>
-<li>Wire the dashboard's file links to a <b>real code host</b></li>
+<li>Wire the report artifacts' file links to a <b>real code host</b></li>
 <li>Bump scanner versions to recent releases</li>
 </ul>
 </div>

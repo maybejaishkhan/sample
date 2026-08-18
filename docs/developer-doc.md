@@ -12,26 +12,23 @@ pipeline implementation to work with it day to day.
 
 ## 1. What the pipeline does (30-second version)
 
-Every time you push to a CI branch (or open a PR), this happens automatically:
+Every time you push to `main` (or open a PR against it), this happens
+automatically:
 
 1. **Build** — compiles the application into a deployable artifact.
 2. **SAST** — scans the source code for secrets and code vulnerabilities.
-3. **MSDO** — runs Microsoft's security scanners (binaries, dependencies,
-   infrastructure-as-code, malware).
-4. **Deploy** — copies the built app to the Windows VM and starts it.
-5. **DAST** — actively attacks the running app (OWASP ZAP) to find
+3. **Deploy** — copies the built app to the Windows VM and starts it.
+4. **DAST** — actively attacks the running app (OWASP ZAP) to find
    runtime vulnerabilities.
-6. **Publish** — aggregates every finding into an HTML dashboard you can
-   download from the run page.
-7. **DefectDojo** *(optional)* — uploads the findings to DefectDojo for
+5. **DefectDojo** *(optional)* — uploads the findings to DefectDojo for
    central triage.
 
 ```
-Build → SAST → MSDO → Deploy → DAST → Publish → (DefectDojo)
+Build → SAST → Deploy → DAST → (DefectDojo)
 ```
 
-**The publish stage always runs**, even when a scan fails — so you always get
-reports.
+**DefectDojo is optional** (off by default). When enabled it still uploads
+whatever the scans produced, even if a scan stage failed.
 
 ## 2. Conceptual model
 
@@ -63,9 +60,6 @@ Two scanners run in parallel over the repository:
 - **Semgrep** — looks for bug/vulnerability patterns in code
   (ruleset `p/security-audit`).
 
-### MSDO
-A bundle of Microsoft security scanners producing one consolidated report.
-
 ### Deploy
 Copies the artifact to the Windows VM and starts the app (as a Windows
 service). Nothing to do day-to-day unless you own the VM.
@@ -75,9 +69,9 @@ OWASP ZAP (already installed on the VM) attacks the *running* app: it crawls
 it, then actively probes it for vulnerabilities. This catches things that only
 exist at runtime.
 
-### Publish
-Every scanner's output is normalized and rendered into a single HTML dashboard
-(published as the `reports-html` artifact).
+### DefectDojo (optional)
+Uploads the scanner reports to DefectDojo for central triage. Off by default;
+see the `EnableDefectDojo` variable.
 
 ## 4. What you can change (variables)
 
@@ -123,7 +117,6 @@ to touch:
 | `WindowsServiceName`   | `WebSample`                                         | Windows service hosting the app      |
 | `ZapTarget`            | `$(ApplicationUrl)`                                 | URL OWASP ZAP scans                  |
 | `ZapTimeout`           | `600`                                               | Scan budget (seconds)                |
-| `PublishReports`       | `true`                                              | `false` = skip the HTML dashboard    |
 
 ### DefectDojo (`security.yml`) — optional, off by default
 
@@ -137,8 +130,8 @@ to touch:
 
 ### Usually left alone
 
-`global.yml` (`AgentImage`, `PythonVersion`, report paths/names, `ScriptsDir`)
-and the report/artifact file names in `security.yml` — only touch these if you
+`global.yml` (`AgentImage`, `PythonVersion`, report path, `ScriptsDir`) and
+the report/artifact file names in `security.yml` — only touch these if you
 know what you are doing.
 
 ## 5. Making the build your own
@@ -168,8 +161,8 @@ If you aren't compiling (static site, pre-built files), set:
 ## 6. Why the build might fail
 
 - **Policy gate violated** — a scanner found critical/high findings. Open the
-  run, download the `reports-html` artifact, and see exactly what was flagged
-  and where.
+  run, download that scanner's artifact (e.g. `trufflehog`, `semgrep`, `zap`),
+  and see exactly what was flagged and where.
 - **Missing report** — a scanner crashed without producing output; the gate
   fails deliberately so a broken scan can never silently pass.
 - **Unverified secret** — remember TruffleHog counts unverified secrets as
@@ -181,34 +174,21 @@ triage a backlog), set `FailOnCritical: false` and/or `FailOnHigh: false` in
 
 ## 7. Reports
 
-- The **HTML dashboard** (`reports-html` artifact) is the main report: severity
-  cards plus tables grouped by severity and by scanner.
-- Each scanner also publishes its raw output as its own artifact
-  (`trufflehog`, `semgrep`, `msdo`, `zap`).
+- Each scanner publishes its raw output as its own artifact (`trufflehog`,
+  `semgrep`, `zap`).
 - Reports are **never committed** to the repo — download them from the run
   page (Artifacts → drop-down).
+- When DefectDojo is enabled, the same reports are imported there for central
+  triage.
 
 ## 8. Common tasks
 
 | I want to...                                        | I do...                                                         |
 |-----------------------------------------------------|-----------------------------------------------------------------|
 | Build my own app                                    | Change `SampleProjectPath` (and `SampleArtifactFileName`)       |
-| See what a scan found                               | Open the run → download `reports-html`                          |
+| See what a scan found                               | Open the run → download the scanner's artifact                  |
 | Stop the build failing on scanner findings          | Set `FailOnCritical`/`FailOnHigh` to `false` (temporarily)      |
 | Bump a scanner version                              | Change `TrufflehogVersion` / `SemgrepVersion`                   |
 | Change what Semgrep checks                          | Change `SemgrepRules`                                            |
-| Skip the HTML dashboard (save time)                 | Set `PublishReports: false`                                      |
 | Point DAST at a different URL                       | Change `ZapTarget` / `ApplicationUrl`                            |
 | Turn on DefectDojo                                  | Set `EnableDefectDojo: true` + the connection secrets            |
-
-## 9. Local tooling (optional)
-
-The report scripts are plain Python and can be run locally to preview the
-dashboard:
-
-```bash
-pipelines/scripts/aggregate.py --raw reports/raw --output reports/summary/combined.json
-pipelines/scripts/generate_html.py --combined reports/summary/combined.json --output reports/html/index.html
-```
-
-This is entirely optional — you only need it if you're debugging the reports.

@@ -9,18 +9,17 @@ whether or not they have seen it before.
 
 ## 1. What this pipeline does
 
-Every push to `main`, `master`, or `develop` (and every PR against `main` or
-`develop`) triggers a fully automated pipeline that:
+Every push to `main` (and every PR against `main`) triggers a fully automated
+pipeline that:
 
 1. **Builds** a small ASP.NET Core web application into a deployable artifact.
 2. **Scans the source code** for security issues (static analysis).
 3. **Deploys** the built application to a Windows VM.
 4. **Scans the running application** (dynamic analysis).
-5. **Publishes** all scan results as an HTML report that anyone can download.
-6. **(Optional)** Uploads the scan results to a DefectDojo instance for central
+5. **(Optional)** Uploads the scan results to a DefectDojo instance for central
    triage.
 
-In short: **build → secure → deploy → test → report → (triage).**
+In short: **build → secure → deploy → test → (triage).**
 
 The pipeline is deliberately modular. The main entry file is thin and simply
 chains together one template per stage. Almost everything is configurable
@@ -36,31 +35,27 @@ touching pipeline logic.
 ## 2. High-level flow
 
 ```
-Build ──► SAST ──► MSDO ──► Deploy ──► DAST ──► Publish ──► DefectDojo (optional)
+Build ──► SAST ──► Deploy ──► DAST ──► DefectDojo (optional)
 ```
 
 | # | Stage      | Where it runs         | What it does                                                     |
 |---|------------|-----------------------|------------------------------------------------------------------|
 | 1 | Build      | Hosted Linux agent    | Publishes the app and stores it as the `drop` artifact           |
 | 2 | SAST       | Hosted Linux agent    | Static analysis: TruffleHog (secrets) + Semgrep (code), in parallel |
-| 3 | MSDO       | Hosted Windows agent  | Microsoft Security DevOps, produces a SARIF report               |
-| 4 | Deploy     | Self-hosted Windows VM | Copies the artifact to `C:\site` and starts the app             |
-| 5 | DAST       | Self-hosted Windows VM | OWASP ZAP scans the running app (spider + active scan)          |
-| 6 | Publish    | Hosted Linux agent    | Aggregates findings into an HTML dashboard (**always runs**)     |
-| 7 | DefectDojo | `DefectDojoPool` agent | Uploads the scanner reports to a DefectDojo instance (**optional**) |
+| 3 | Deploy     | Self-hosted Windows VM | Copies the artifact to `C:\site` and starts the app             |
+| 4 | DAST       | Self-hosted Windows VM | OWASP ZAP scans the running app (spider + active scan)          |
+| 5 | DefectDojo | `DefectDojoPool` agent | Uploads the scanner reports to a DefectDojo instance (**optional**) |
 
 > Diagram: a Mermaid source of this flow lives at `diagrams/pipeline-flow.mmd`
 > (git-ignored; render it with any Mermaid tool or paste it into
 > mermaid.live). It is kept out of this document so the doc renders cleanly on
 > plain markdown viewers.
 
-**Key design decision:** the **Publish** stage uses `condition: always()`. Even
-if a security stage fails or is skipped, the reports are still generated and
-published, so you never lose scan output because of a failing scanner.
-
 **DefectDojo** is an optional final stage, gated on the `EnableDefectDojo`
-variable. It downloads each scanner's artifact and imports each report via the
-DefectDojo API v2 (see `scripts/import_defectdojo.ps1`).
+variable. It runs after SAST/DAST and downloads each scanner's artifact, so the
+reports are uploaded even when a scan stage failed (it uses
+`succeededOrFailed()`). Imports happen via the DefectDojo API v2 (see
+`scripts/import_defectdojo.ps1`).
 
 ---
 
@@ -78,21 +73,17 @@ DefectDojo API v2 (see `scripts/import_defectdojo.ps1`).
 └── pipelines/
     ├── azure-pipelines.yml     # main pipeline: loads variables + stage templates
     ├── variables/              # every configurable value lives here
-    │   ├── global.yml          #   agents, Python version, report paths
+    │   ├── global.yml          #   agents, Python version, report path
     │   ├── build.yml           #   build mode, project path, artifact name
     │   ├── security.yml        #   scanner versions/rules, policy gates, DefectDojo
     │   └── deployment.yml      #   VM settings, app hosting, ZAP
     ├── templates/              # one file per stage
     │   ├── build.yml           #   stage 1
     │   ├── sast.yml            #   stage 2
-    │   ├── msdo.yml            #   stage 3
-    │   ├── deploy.yml          #   stage 4
-    │   ├── dast.yml            #   stage 5
-    │   ├── publish.yml         #   stage 6
-    │   └── defectdojo.yml      #   stage 7 (optional)
+    │   ├── deploy.yml          #   stage 3
+    │   ├── dast.yml            #   stage 4
+    │   └── defectdojo.yml      #   stage 5 (optional)
     └── scripts/                # the brains: Python + PowerShell
-        ├── aggregate.py        #   parse all raw reports → combined.json
-        ├── generate_html.py    #   combined.json → index.html dashboard
         ├── policy_check.py     #   fail a job on critical/high findings
         ├── import_defectdojo.ps1 #  upload raw reports to DefectDojo (curl, runs on any agent)
         ├── import_defectdojo.py #  same uploader, for Linux/local use
@@ -175,28 +166,7 @@ Because the policy-gate step also runs on `always()`, a scanner that crashes
 (and therefore produces no report) also fails the job — the pipeline never
 silently passes a broken scan.
 
-### Stage 3 — MSDO (`templates/msdo.yml`, hosted Windows agent)
-
-Runs **Microsoft Security DevOps**, Microsoft's collection of security tools
-(BinSkim, Bandit, Checkov, Terrascan, Trivy, template analyzers, etc.), against
-the repository and produces a consolidated SARIF file.
-
-Flow inside the job:
-
-1. `MicrosoftSecurityDevOps@1` task runs the scan. It publishes its SARIF as a
-   pipeline artifact named by `MsdoCodeAnalysisArtifact` (default
-   `CodeAnalysisLogs` — this is the tool's own contract; the task does **not**
-   write into our reports folder).
-2. The job downloads that artifact back and consolidates the first `*.sarif`
-   file into `reports/raw/msdo.sarif`.
-3. Results are archived as the `msdo` artifact.
-4. A policy gate runs (same `policy_check.py`).
-
-**Prerequisite:** the *Microsoft Security DevOps* extension must be installed in
-your Azure DevOps organization (Marketplace → Manage extensions). Without it the
-`MicrosoftSecurityDevOps@1` task cannot be resolved.
-
-### Stage 4 — Deploy (`templates/deploy.yml`, self-hosted Windows VM)
+### Stage 3 — Deploy (`templates/deploy.yml`, self-hosted Windows VM)
 
 Downloads the `drop` artifact into `DeploySourcePath` and runs
 `scripts/deploy.ps1`, which executes **directly on the VM** through the
@@ -219,7 +189,7 @@ a plain `Start-Process` would not survive until the DAST stage.
 stdout/stderr on failure, so a bad deployment fails with a useful message
 instead of a silent timeout.
 
-### Stage 5 — DAST (`templates/dast.yml`, self-hosted Windows VM)
+### Stage 4 — DAST (`templates/dast.yml`, self-hosted Windows VM)
 
 Runs **OWASP ZAP** (already installed on the VM) against the deployed
 application. The pipeline never downloads or installs ZAP.
@@ -240,36 +210,20 @@ scan runs on the VM itself, the target is addressed as `localhost`/`127.0.0.1`
 back to IPv4 the way .NET's HTTP client does). The script ends with an explicit
 `exit 0` so a stale `$LASTEXITCODE` from a native command cannot fail the job.
 
-### Stage 6 — Publish (`templates/publish.yml`, hosted Linux agent)
-
-Collects everything and makes it available to the team. This stage:
-
-- **Downloads** every scanner's raw artifact (`trufflehog`, `semgrep`, `msdo`,
-  `zap`) — each download is best-effort (`continueOnError`), so a scanner that
-  didn't run simply contributes nothing.
-- **Aggregates** all findings into one normalized `combined.json`
-  (`aggregate.py`).
-- **Generates** a single-page HTML dashboard (`index.html`) — skipped when
-  `PublishReports` is `false`.
-- **Publishes** the dashboard as the `reports-html` artifact. (Each scanner job
-  publishes its own raw artifact — `trufflehog`, `semgrep`, `msdo`, `zap`.)
-
-It depends on `[SAST, MSDO, DAST]` (so the scanner artifacts exist before it
-runs) and uses `condition: always()` (so it runs even when those stages failed).
-
-### Stage 7 — DefectDojo (`templates/defectdojo.yml`, agent from `DefectDojoPool`, optional)
+### Stage 5 — DefectDojo (`templates/defectdojo.yml`, agent from `DefectDojoPool`, optional)
 
 Uploads the scanner reports to a DefectDojo instance so findings can be
 triaged centrally. The stage only runs when `EnableDefectDojo` is `true`.
 
-- Depends on **Publish** and downloads each scanner's own artifact
-  (`trufflehog`, `semgrep`, `msdo`, `zap`), so it imports exactly the reports
-  the dashboard is built from.
+- Depends on `[SAST, DAST]` and downloads each scanner's own artifact
+  (`trufflehog`, `semgrep`, `zap`), so it imports exactly the raw reports the
+  scans produced. Each download is best-effort, and the stage uses
+  `succeededOrFailed()`, so whatever the scans produced is still uploaded even
+  when a scan stage failed.
 - Runs `scripts/import_defectdojo.ps1` (PowerShell + curl), which calls the
   DefectDojo API v2 `import-scan` / `reimport-scan` endpoint once per report
   file with the matching scan type: `trufflehog.json` → *Trufflehog Scan*,
-  `semgrep.json` → *Semgrep JSON Report*, `msdo.sarif` → *SARIF*, `zap.xml` →
-  *ZAP Scan*.
+  `semgrep.json` → *Semgrep JSON Report*, `zap.xml` → *ZAP Scan*.
 - Product type, product and engagement are **created via the API** by the
   import script when they do not exist (the import-scan endpoint itself only
   auto-creates the engagement), using `DefectDojoProductTypeName`,
@@ -277,6 +231,11 @@ triaged centrally. The stage only runs when `EnableDefectDojo` is `true`.
 - `DefectDojoImportMode` (`reimport` by default) keeps one Test per scan type
   inside the engagement and closes findings that disappear, instead of stacking
   a new Test per run.
+
+> Note: this pipeline previously ran a Microsoft Security DevOps (MSDO) stage
+> whose SARIF was also imported as *SARIF*. That stage was removed; if you want
+> SARIF imports back, add a scanner that emits SARIF and map its file via
+> `DEFECTDOJO_SCAN_TYPES` in `templates/defectdojo.yml`.
 
 Authentication uses a DefectDojo API v2 token passed as a **secret**
 (`DefectDojoApiToken`) and the base URL (`DefectDojoUrl`); both must be
@@ -299,14 +258,8 @@ variable group).
 | Variable               | Default                  | Purpose                          |
 |------------------------|--------------------------|----------------------------------|
 | `AgentImage`           | `ubuntu-latest`          | Hosted image for Linux jobs      |
-| `WindowsAgentImage`    | `windows-latest`         | Hosted image for Windows jobs    |
-| `PythonVersion`        | `3.11`                   | Python used by report scripts    |
+| `PythonVersion`        | `3.11`                   | Python used by the policy check  |
 | `RawReportsDirFull`    | `$(Build.ArtifactStagingDirectory)/reports/raw` | Where raw scanner files land |
-| `HtmlReportsDirFull`   | `.../reports/html`       | Where the HTML dashboard goes    |
-| `SummaryReportsDirFull`| `.../reports/summary`    | Where the aggregated `combined.json` goes |
-| `CombinedReportFile`   | `combined.json`          | Aggregated findings file name    |
-| `HtmlReportFile`       | `index.html`             | Dashboard file name              |
-| `ReportsHtmlArtifact`  | `reports-html`           | Dashboard artifact name (Publish stage) |
 | `ScriptsDir`           | `pipelines/scripts`      | Where the Python scripts live    |
 
 Reports are always written to the agent's staging area — **never committed to
@@ -328,20 +281,17 @@ the repository**.
 ### `security.yml` — scanner settings
 
 Key items: `SemgrepRules` (`p/security-audit`), `SemgrepVersion` (empty = latest),
-`TrufflehogVersion`, `TrufflehogArch` (`linux_amd64`), `MsdoPolicy`
-(`azuredevops`), plus:
+`TrufflehogVersion`, `TrufflehogArch` (`linux_amd64`), plus:
 
 - **Policy gates:** `FailOnCritical = true`, `FailOnHigh = true` — findings at
   these severities fail the job. TruffleHog findings are always mapped to
   `high` (verified or not), so with `FailOnHigh = true` even *unverified*
   secrets fail the build.
 - **Report file names:** `semgrep.json`, `semgrep.sarif`, `trufflehog.json`,
-  `msdo.sarif`, `zap.json`, `zap.xml`, `zap.html`. These must match what the
-  scanners write and what the Python parsers expect.
-- **Artifact names:** `trufflehog`, `semgrep`, `msdo`, `zap` — the Publish and
-  DefectDojo stages download these by name, so keep them in sync if renamed.
-- **MSDO:** `MsdoCodeAnalysisArtifact` (default `CodeAnalysisLogs`) is the name
-  of the pipeline artifact the MSDO task publishes its SARIF to.
+  `zap.json`, `zap.xml`, `zap.html`. These must match what the scanners write
+  and what the Python parsers expect.
+- **Artifact names:** `trufflehog`, `semgrep`, `zap` — the DefectDojo stage
+  downloads these by name, so keep them in sync if renamed.
 - **DefectDojo:** `EnableDefectDojo` (default `false`) turns the optional
   DefectDojo stage on/off; `DefectDojoUrl` + `DefectDojoApiToken` (a **secret**)
   point at the instance; `DefectDojoProductName` / `DefectDojoProductTypeName` /
@@ -366,7 +316,6 @@ Key items: `SemgrepRules` (`p/security-audit`), `SemgrepVersion` (empty = latest
 | `ZapTarget`          | `$(ApplicationUrl)`                               | URL ZAP scans                            |
 | `ZapTimeout`         | `600`                                             | ZAP spider + active-scan budget          |
 | `ZapApiPort`         | `8090`                                            | ZAP REST API port                        |
-| `PublishReports`     | `true`                                            | Set `false` to skip the HTML dashboard entirely |
 
 **Hosting modes are mutually exclusive.** If `WindowsServiceName` is set, the
 app is stopped/started as a service; otherwise `StartCommand` launches a
@@ -403,23 +352,16 @@ job — a broken scanner can never silently pass.
 
 ## 8. Reports and artifacts
 
-Raw scanner output is archived per scanner (`trufflehog`, `semgrep`, `msdo`,
-`zap`) by each scanner job. The Publish stage aggregates it and produces the
-HTML dashboard:
+Raw scanner output is archived per scanner (`trufflehog`, `semgrep`, `zap`) by
+each scanner job:
 
 | Artifact        | Published by          | Contents                                          |
 |-----------------|-----------------------|---------------------------------------------------|
-| `trufflehog`, `semgrep`, `msdo`, `zap` | the scanner jobs | Original scanner files (`*.json`, `*.sarif`, `*.xml`, `*.html`) |
-| `reports-html`  | the Publish stage     | A single-page `index.html` security dashboard (severity cards, tables grouped by severity and by scanner) |
+| `trufflehog`, `semgrep`, `zap` | the scanner jobs | Original scanner files (`*.json`, `*.sarif`, `*.xml`, `*.html`) |
 
 Download these from the pipeline run page (Artifacts → drop-down) after any run.
-
-You can also run the aggregation scripts locally, e.g.:
-
-```bash
-pipelines/scripts/aggregate.py --raw reports/raw --output reports/summary/combined.json
-pipelines/scripts/generate_html.py --combined reports/summary/combined.json --output reports/html/index.html
-```
+The DefectDojo stage (when enabled) downloads the same artifacts and imports
+them (see stage 5).
 
 ---
 
@@ -429,10 +371,8 @@ pipelines/scripts/generate_html.py --combined reports/summary/combined.json --ou
 
 1. **Point a pipeline at `pipelines/azure-pipelines.yml`** (Pipelines → New
    pipeline → Azure Repos Git → select this repository).
-2. **Install the Microsoft Security DevOps extension** (Marketplace → Manage
-   extensions → Microsoft Security DevOps). Required for the MSDO stage.
-3. Make sure the build can use hosted agents (`ubuntu-latest`,
-   `windows-latest`) — no extra setup needed for those.
+2. Make sure the build can use hosted agents (`ubuntu-latest`) — no extra setup
+   needed for those.
 
 ### DefectDojo instance (optional)
 
@@ -476,13 +416,13 @@ The Deploy and DAST jobs run on the VM through a self-hosted agent. The VM needs
 
 ```yaml
 trigger:
-  branches: { include: [main, master, develop] }   # CI on every push
+  branches: { include: [main] }   # CI on every push
 pr:
-  branches: { include: [main, develop] }           # PR validation
+  branches: { include: [main] }   # PR validation
 ```
 
-- A push to those branches runs the whole pipeline.
-- A pull request against those branches runs it as PR validation.
+- A push to `main` runs the whole pipeline.
+- A pull request against `main` runs it as PR validation.
 - You can also run it manually from the Pipelines page (Run pipeline).
 
 ---
@@ -497,15 +437,7 @@ Practical guidance based on real issues hit during development.
 |---------|--------------|-----|
 | `A sequence was not expected` in a stage template | Template missing the `stages:` wrapper | Ensure each template starts with `stages:` before `- stage:` |
 | Arguments after a certain point silently ignored (e.g. `StartCommand` never bound) | A blank line inside a folded `>-` YAML block injects a literal newline into the value, splitting the argument string | Remove blank lines inside `arguments: >-` blocks |
-| Publish runs too early / reports empty | Publish only depended on Build, so it ran before scanners produced artifacts | `dependsOn: [SAST, MSDO, DAST]` (with `condition: always()`) |
-
-### MSDO
-
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| `Missing argument in parameter list` / parser errors during "Install Microsoft Security DevOps" | The old `aka.ms/install-azsdopackage.ps1` bootstrap URL now serves an HTML page, not a script | The bootstrap step has been removed; use the `MicrosoftSecurityDevOps@1` task with the extension installed |
-| `MicrosoftSecurityDevOps@1` task not found | Extension not installed in the organization | Install the Microsoft Security DevOps extension |
-| `MSDO produced no SARIF output` | `policy` set to an invalid value (e.g. `GitHub`), or looking for output in the wrong directory | Use `azuredevops`/`microsoft`/`none`; the task publishes SARIF to the `CodeAnalysisLogs` artifact, which the job downloads |
+| DefectDojo runs but reports are missing/empty | The stage depended only on Build, so it ran before scanners produced artifacts | `dependsOn: [SAST, DAST]` (with `succeededOrFailed()` when `EnableDefectDojo`) |
 
 ### DefectDojo
 
@@ -543,8 +475,8 @@ Practical guidance based on real issues hit during development.
 - The Deploy and ZAP scripts deliberately dump the app's/daemon's own stdout and
   stderr when something isn't reachable — read those lines first; they usually
   state the real error.
-- Reports are published as artifacts even on failed runs, so download them to
-  see exactly what each scanner found.
+- Scanner reports are published as artifacts even on failed runs, so download
+  them to see exactly what each scanner found.
 
 ---
 
@@ -562,8 +494,8 @@ Exactly three things change:
 3. **Variables** in `pipelines/variables/security.yml` (report file name,
    artifact name, version).
 
-Nothing else changes — the Publish stage picks new reports up automatically
-because aggregation is driven by the dispatcher.
+Nothing else changes — the policy gates pick new reports up automatically
+because parsing is driven by the dispatcher.
 
 If the DefectDojo stage is enabled, add one more `FILE=SCAN_TYPE` pair to the
 `DEFECTDOJO_SCAN_TYPES` environment variable in `templates/defectdojo.yml` so
@@ -579,7 +511,6 @@ different name, set `SampleArtifactFileName` too. No template changes needed.
 
 - Replace ZAP's `api.disablekey=true` with a real API key stored as a pipeline
   secret, and restrict what ZAP may crawl.
-- Wire the HTML dashboard's file links to a real code host.
 - Bump scanner versions (e.g. `TrufflehogVersion`) to recent releases.
 
 > The sample app is already hosted as a Windows service (so it survives
@@ -609,8 +540,7 @@ repo → Existing Azure Pipelines YAML file → `pipelines/azure-pipelines.yml`.
 
 Then confirm the organization prerequisites from section 9:
 
-- The **Microsoft Security DevOps extension** is installed (MSDO stage).
-- Hosted agent pools (`ubuntu-latest`, `windows-latest`) are usable.
+- Hosted agent pools (`ubuntu-latest`) are usable.
 - The **self-hosted VM pool** (`VmPool`, default `cloud-poc`) exists and the VM
   has a registered agent.
 
@@ -669,18 +599,18 @@ In `pipelines/variables/security.yml`:
   dispatcher in `scripts/shared/dispatch.py`.
 
 The SAST jobs scan the whole repository (`$(Build.SourcesDirectory)`), and the
-MSDO/ZAP stages are already target-agnostic, so no per-repo logic is needed
-there.
+ZAP stage is already target-agnostic, so no per-repo logic is needed there.
 
 ### 6. Adjust triggers (optional)
 
-The default triggers in `azure-pipelines.yml` run on `main`/`master`/`develop`.
-Change them to match your repo's branch strategy.
+The default triggers in `azure-pipelines.yml` run on `main`. Change them to
+match your repo's branch strategy if it differs.
 
 ### 7. Verify
 
 1. Run the pipeline once with a low-impact change (or from the Pipelines page).
-2. Confirm Build produces the artifact, SAST/MSDO produce findings, Deploy
-   starts the service, DAST scans it, and Publish publishes `reports-*`.
+2. Confirm Build produces the artifact, SAST produces findings, Deploy starts
+   the service, DAST scans it, and DefectDojo (when enabled) imports the
+   reports.
 3. If a stage fails, see section 11 — the scripts are written to print the
    actual error rather than fail silently.

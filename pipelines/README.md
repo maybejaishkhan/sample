@@ -6,28 +6,23 @@ dynamic-scanning a Windows-VM-hosted application.
 ## Pipeline shape
 
 ```
-Build ──► SAST ──► MSDO ──► Deploy ──► DAST ──► Publish ──► DefectDojo (optional)
+Build ──► SAST ──► Deploy ──► DAST ──► DefectDojo (optional)
 ```
 
 | Stage       | What it does                                                        |
 | ----------- | ------------------------------------------------------------------- |
 | Build       | Produces the deployment artifact (sample app by default)             |
 | SAST        | TruffleHog (secrets) + Semgrep (static analysis), run in parallel   |
-| MSDO        | Microsoft Security DevOps -> SARIF                                   |
 | Deploy      | Deployment job on the Windows VM -> copies app to `C:\site`          |
 | DAST        | OWASP ZAP (already installed on the VM) scans the deployed app       |
-| Publish     | Aggregates everything into reports; **always runs**                 |
 | DefectDojo  | Uploads the scanner reports to a DefectDojo instance (**optional**) |
 
-The Publish stage uses `condition: always()`, so if a security stage fails the
-reports are still generated and published.
-
 The DefectDojo stage is skipped unless `EnableDefectDojo` is `true`. When
-enabled it downloads each scanner's own artifact and imports its report via the
-DefectDojo API v2 (`import-scan`/`reimport-scan`): TruffleHog, Semgrep JSON,
-MSDO SARIF and ZAP XML. Product type, product and engagement are created by the
-script via the DefectDojo API if they don't exist yet, so nothing needs to be
-set up in the UI.
+enabled it runs after SAST/DAST, downloads each scanner's own artifact and
+imports its report via the DefectDojo API v2
+(`import-scan`/`reimport-scan`): TruffleHog, Semgrep JSON and ZAP XML. Product
+type, product and engagement are created by the script via the DefectDojo API
+if they don't exist yet, so nothing needs to be set up in the UI.
 
 ## Layout
 
@@ -42,27 +37,23 @@ pipelines/
 ├── templates/                 # one file per stage; jobs + steps fully inline
 │   ├── build.yml              #   creates the deployment artifact
 │   ├── sast.yml               #   TruffleHog + Semgrep jobs (parallel)
-│   ├── msdo.yml               #   Microsoft Security DevOps job
 │   ├── deploy.yml             #   deployment job to the Windows VM
 │   ├── dast.yml               #   OWASP ZAP deployment job on the VM
-│   ├── publish.yml            #   aggregation + HTML dashboard publishing (always)
 │   └── defectdojo.yml         #   optional: upload reports to DefectDojo
-├── scripts/                   # Python aggregator + PowerShell helpers
-│   ├── aggregate.py           #   parsers -> combined.json
-│   ├── generate_html.py       #   combined.json -> index.html dashboard
-│   ├── policy_check.py        #   per-scanner policy gate (fail on critical/high)
-│   ├── import_defectdojo.ps1  #   uploads raw reports to DefectDojo (REST API, curl)
-│   ├── import_defectdojo.py   #   same uploader, for Linux/local use
-│   ├── deploy.ps1             #   runs on the VM: stop/copy/start/wait
-│   ├── zap_scan.ps1           #   runs on the VM: headless ZAP scan
-│   ├── parser/                #   one parser per scanner (return Finding[])
-│   └── shared/                #   Finding model + parser dispatcher
+└── scripts/                   # Python policy checks + PowerShell helpers
+    ├── policy_check.py        #   per-scanner policy gate (fail on critical/high)
+    ├── import_defectdojo.ps1  #   uploads raw reports to DefectDojo (REST API, curl)
+    ├── import_defectdojo.py   #   same uploader, for Linux/local use
+    ├── deploy.ps1             #   runs on the VM: stop/copy/start/wait
+    ├── zap_scan.ps1           #   runs on the VM: headless ZAP scan
+    ├── parser/                #   one parser per scanner (return Finding[])
+    └── shared/                #   Finding model + parser dispatcher
 ```
+
 Reports are **not stored in the repository**. They are written to the agent's
-artifact staging area (`$(Build.ArtifactStagingDirectory)/reports/...`) and the
-Publish stage publishes a single `reports-html` artifact (a one-page dashboard)
-plus the per-scanner artifacts (`trufflehog`, `semgrep`, `msdo`, `zap`) that
-each scanner job publishes itself.
+artifact staging area (`$(Build.ArtifactStagingDirectory)/reports/raw`) and
+published as per-scanner pipeline artifacts (`trufflehog`, `semgrep`, `zap`)
+that each scanner job publishes itself.
 
 ## Configuration
 
@@ -74,12 +65,7 @@ groups / library secrets rather than editing the files per branch.
 
 Before the first real run:
 
-* Create the Azure DevOps **Environment** (`DeploymentEnvironment`) and register
-  the Windows VM as a **VM resource** (`VmResourceName`) with a deployment agent.
 * Install OWASP ZAP on the VM (`ZapPath`).
-* If `MicrosoftSecurityDevOps@1` does not resolve, install the *Microsoft
-  Security DevOps* extension in the organization (see
-  `templates/msdo.yml`).
 * Bump `TrufflehogVersion` / `SemgrepVersion` / `ZapTimeout` to taste.
 
 ## DefectDojo integration
@@ -111,7 +97,6 @@ Scan type mapping:
 | ------------ | ---------------------- |
 | `trufflehog.json` | `Trufflehog Scan`   |
 | `semgrep.json`    | `Semgrep JSON Report` |
-| `msdo.sarif`      | `SARIF`              |
 | `zap.xml`         | `ZAP Scan`           |
 
 The import step is a PowerShell script (`import_defectdojo.ps1`) so it runs on
@@ -141,8 +126,6 @@ GitHub blocks malicious content):
 * `code/*.py` - deliberate vulnerabilities (SQL injection, command injection,
   XSS, path traversal, SSRF, unsafe `eval()`/`pickle`/`yaml.load`, weak
   crypto, hardcoded credentials) that Semgrep's `p/security-audit` flags.
-* `malware/eicar.txt` - the EICAR anti-malware signature, caught by the MSDO
-  AntiMalware tool.
 * `web/login.html` - an insecure form (no CSRF, password autocomplete).
 
 The fixtures are not checked out by `checkout: self` because they are
@@ -151,9 +134,10 @@ onto the agent/VM workdir first (e.g. place them in
 `$(Build.SourcesDirectory)/security-tests` before the SAST stage runs).
 
 With the default gates (`FailOnCritical`/`FailOnHigh` = true) the Semgrep job
-finds an ERROR/high finding, so the **build fails** at the SAST stage - while
-the Publish stage still runs and produces all reports. To verify detection
-without failing the build, set `FailOnCritical: false` / `FailOnHigh: false`.
+finds an ERROR/high finding, so the **build fails** at the SAST stage (Deploy
+and DAST are skipped; the DefectDojo stage, when enabled, still uploads
+whatever the scans produced). To verify detection without failing the build,
+set `FailOnCritical: false` / `FailOnHigh: false`.
 
 TruffleHog findings are treated as `high` whether the secret is verified or
 not, so the TruffleHog job fails on *unverified* results as well (TruffleHog's
@@ -173,23 +157,9 @@ Exactly three things change:
 3. **Variable updates** in `pipelines/variables/security.yml` (report file
    name, artifact name, version).
 
-Nothing else needs to change - the Publish stage picks new files up
-automatically because aggregation is driven by the dispatcher.
+Nothing else needs to change - the policy gates pick new files up
+automatically because parsing is driven by the dispatcher.
 
 If the DefectDojo stage is enabled, also add a `FILE=SCAN_TYPE` pair to the
 `DEFECTDOJO_SCAN_TYPES` environment variable in `templates/defectdojo.yml`
 mapping the new report file to its DefectDojo scan type.
-
-## Running the aggregator locally
-
-The scripts create their output folders on demand, so for local testing use any
-directory (e.g. `pipelines/reports/...` locally is fine - it just isn't
-committed):
-
-```bash
-pipelines/scripts/aggregate.py --raw pipelines/reports/raw \
-    --output pipelines/reports/summary/combined.json
-
-pipelines/scripts/generate_html.py --combined pipelines/reports/summary/combined.json \
-    --output pipelines/reports/html/index.html
-```

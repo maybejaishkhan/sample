@@ -13,7 +13,8 @@
 #           -> policy (policy_check.py, fails job if FailOnCritical/FailOnHigh)
 #
 # The policy step runs on `always()` so a crashed scanner cannot silently pass.
-# If any job fails, Deploy/DAST are skipped; Publish still runs.
+# If any job fails, Deploy/DAST are skipped; DefectDojo still runs (when
+# enabled) so whatever the scan produced is still uploaded.
 # ==============================================================================
 
 stages:

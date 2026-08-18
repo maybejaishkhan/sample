@@ -15,7 +15,6 @@ extended/overridden with the DEFECTDOJO_SCAN_TYPES environment variable
 
     trufflehog.json  -> Trufflehog Scan
     semgrep.json     -> Semgrep JSON Report
-    msdo.sarif       -> SARIF
     zap.xml          -> ZAP Scan
 
 The mapping is read from the environment (not a command-line argument) because
@@ -78,7 +77,6 @@ if (-not $curl) {
 $defaultScanTypes = [ordered]@{
     'trufflehog.json' = 'Trufflehog Scan'
     'semgrep.json'    = 'Semgrep JSON Report'
-    'msdo.sarif'      = 'SARIF'
     'zap.xml'         = 'ZAP Scan'
 }
 $scanTypes = @{}

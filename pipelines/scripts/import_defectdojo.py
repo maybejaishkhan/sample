@@ -13,7 +13,6 @@ extended/overridden with ``--scan-type FILE=SCAN_TYPE``:
 
     trufflehog.json  -> Trufflehog Scan
     semgrep.json     -> Semgrep JSON Report
-    msdo.sarif       -> SARIF
     zap.xml          -> ZAP Scan
 
 Environment variables (secrets are read from the environment so they never
@@ -49,7 +48,6 @@ except ImportError:  # pragma: no cover - environment issue, not tested
 DEFAULT_SCAN_TYPES = {
     "trufflehog.json": "Trufflehog Scan",
     "semgrep.json": "Semgrep JSON Report",
-    "msdo.sarif": "SARIF",
     "zap.xml": "ZAP Scan",
 }
 

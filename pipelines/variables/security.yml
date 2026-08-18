@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------
-# Security pipeline variables (SAST + MSDO scanners).
+# Security pipeline variables (SAST scanners).
 #
 # Every configurable value for the static analysis scanners lives here so the
 # scanner jobs stay free of magic strings. To add a new scanner later, create
@@ -85,26 +85,10 @@ variables:
   - name: DefectDojoImportMode
     value: reimport
 
-  # ------------------------------------------------------------------ MSDO
-  # Microsoft Security DevOps policy. Valid values for the Azure DevOps task:
-  # 'azuredevops', 'microsoft', or 'none'. 'none' disables the policy.
-  - name: MsdoPolicy
-    value: azuredevops
-
-  # Tools executed by MSDO. Leave empty to use the MSDO default tool set.
-  - name: MsdoTools
-    value: ''
-
-  # Name of the pipeline artifact the MicrosoftSecurityDevOps task publishes
-  # its SARIF to (must match the task's artifactName input). The MSDO job
-  # downloads it and consolidates the first *.sarif to MsdoSarifReport.
-  - name: MsdoCodeAnalysisArtifact
-    value: CodeAnalysisLogs
-
   # ---------------------------------------------------------- Policy gates
   # If a scanner finds findings at these severities the job FAILS and later
-  # stages (Deploy/DAST) are skipped. The Publish stage still runs via
-  # `condition: always()` so reports are never lost.
+  # stages (Deploy/DAST) are skipped. The DefectDojo stage (when enabled) still
+  # runs via `succeededOrFailed()` so whatever the scans produced is uploaded.
   #
   # TruffleHog findings are always mapped to high (verified or not), so with
   # FailOnHigh=true even unverified secrets fail the build - TruffleHog's own
@@ -122,8 +106,6 @@ variables:
     value: semgrep.sarif
   - name: TrufflehogJsonReport
     value: trufflehog.json
-  - name: MsdoSarifReport
-    value: msdo.sarif
   - name: ZapJsonReport
     value: zap.json
   - name: ZapXmlReport
@@ -131,13 +113,11 @@ variables:
   - name: ZapHtmlReport
     value: zap.html
 
-  # Names of the pipeline artifacts published by each scanner job. The Publish
-  # stage downloads these by name, so keep them in sync if renamed.
+  # Names of the pipeline artifacts published by each scanner job. The
+  # DefectDojo stage downloads these by name, so keep them in sync if renamed.
   - name: TrufflehogArtifact
     value: trufflehog
   - name: SemgrepArtifact
     value: semgrep
-  - name: MsdoArtifact
-    value: msdo
   - name: ZapArtifact
     value: zap

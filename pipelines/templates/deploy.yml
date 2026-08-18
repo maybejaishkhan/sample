@@ -11,7 +11,7 @@
 stages:
   - stage: Deploy
     displayName: Deploy to Windows VM
-    dependsOn: MSDO
+    dependsOn: SAST
     jobs:
       - job: Deploy
         displayName: Deploy to Windows VM

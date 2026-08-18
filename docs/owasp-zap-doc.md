@@ -134,8 +134,8 @@ ZAP is already integrated and proven in our pipeline:
 1. The pipeline deploys the app to the Windows VM.
 2. `zap_scan.ps1` starts ZAP headless, runs the spider and active scan, and
    exports `zap.json` / `zap.xml` / `zap.html`.
-3. Results are archived, gated by policy, rendered in the HTML dashboard, and
-   imported into DefectDojo (which has first-class `ZAP Scan` support).
+3. Results are archived, gated by policy, and imported into DefectDojo (which
+    has first-class `ZAP Scan` support).
 
 No re-work or additional tooling is required to adopt it.
 
@@ -147,7 +147,7 @@ No re-work or additional tooling is required to adopt it.
   `ApplicationUrl` (the running app) with a spider + active scan.
 - **Policy gate:** critical/high ZAP findings fail the build (see
   `FailOnCritical` / `FailOnHigh`).
-- All ZAP outputs feed the aggregated HTML dashboard and DefectDojo.
+- All ZAP outputs are archived, gated by policy, and imported into DefectDojo.
 
 All behaviour is configurable through pipeline variables (scan target, timeout,
 ZAP API port, report names) — no pipeline code changes are needed for tuning.

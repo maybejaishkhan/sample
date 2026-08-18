@@ -7,7 +7,7 @@ info: |
   Moving delivery to cloud-based CI/CD on Azure & Azure DevOps.
   Presented by Jay Ntongwe.
 author: Jay Ntongwe
-keywords: Azure, Azure DevOps, CI/CD, Security, SAST, DAST, MSDO
+keywords: Azure, Azure DevOps, CI/CD, Security, SAST, DAST
 class: text-left
 transition: slide-left
 ---
@@ -141,10 +141,9 @@ layout: default
 <h3>Security by design</h3>
 <ul>
 <li><b>SAST</b> for static analysis and secret scanning</li>
-<li><b>MSDO</b>: Microsoft Security DevOps</li>
 <li><b>DAST</b> against the live app</li>
 <li><b>Policy gates</b> that block critical and high findings</li>
-<li><b>Reports</b> that always get published</li>
+<li><b>Reports</b>: per-scanner artifacts, kept even when a scan fails</li>
 </ul>
 </div>
 
@@ -165,7 +164,7 @@ layout: default
 
 <div class="grid-3 mt">
 
-<div class="highlight-card" style="text-align:center"><b class="accent">Always runs</b><br/>Reports publish even when a scan fails, so findings are never lost.</div>
+<div class="highlight-card" style="text-align:center"><b class="accent">Never lost</b><br/>Each scanner publishes its raw artifact even when a scan fails, so findings are never lost.</div>
 <div class="highlight-card" style="text-align:center"><b class="accent">Gated</b><br/>Critical or high findings stop the build before anything ships.</div>
 <div class="highlight-card" style="text-align:center"><b class="accent">Optional</b><br/>DefectDojo triage turns on with a single flag.</div>
 
@@ -181,11 +180,9 @@ layout: default
 |---|-------|---------|---------|
 | 1 | **Build** | Hosted Linux | Publishes the app into the `drop` artifact |
 | 2 | **SAST** | Hosted Linux | TruffleHog (secrets) + Semgrep (code) in parallel |
-| 3 | **MSDO** | Hosted Windows | Microsoft Security DevOps, produces SARIF |
-| 4 | **Deploy** | Self-hosted Windows VM | Installs the app as a Windows service |
-| 5 | **DAST** | Self-hosted Windows VM | OWASP ZAP scans the running app |
-| 6 | **Publish** | Hosted Linux | Aggregates findings into an HTML dashboard, **always runs** |
-| 7 | **DefectDojo** | `DefectDojoPool` agent | Uploads reports for central triage, **optional** |
+| 3 | **Deploy** | Self-hosted Windows VM | Installs the app as a Windows service |
+| 4 | **DAST** | Self-hosted Windows VM | OWASP ZAP scans the running app |
+| 5 | **DefectDojo** | `DefectDojoPool` agent | Uploads reports for central triage, **optional** |
 
 <div class="tiny mt">The main pipeline file is deliberately thin. It just chains one template per stage, so most changes never touch the pipeline logic.</div>
 
@@ -197,7 +194,7 @@ layout: section
 
 <div class="rule"></div>
 
-### Build, SAST, MSDO, Deploy, DAST, Publish, then optionally DefectDojo.
+### Build, SAST, Deploy, DAST, then optionally DefectDojo.
 
 ---
 layout: default
@@ -237,25 +234,12 @@ layout: default
 layout: default
 ---
 
-# MSDO & Deploy
+# Deploy
 
 <div class="grid-2">
 
 <div class="card">
-<h3><span class="pill pill-blue">3</span> MSDO</h3>
-<div class="tool-logo mb">
-<img src="/microsoft.png" alt="Microsoft"/>
-<div><b>Microsoft Security DevOps</b>, the bundled scanner suite from Microsoft</div>
-</div>
-<ul>
-<li>BinSkim, Bandit, Checkov, Terrascan, Trivy, and more</li>
-<li>Runs on a hosted <b>Windows</b> agent</li>
-<li>Emits one consolidated <b>SARIF</b> report</li>
-</ul>
-</div>
-
-<div class="card">
-<h3><span class="pill pill-blue">4</span> Deploy</h3>
+<h3><span class="pill pill-blue">3</span> Deploy</h3>
 <ul>
 <li>Runs on the <b>self-hosted Windows VM</b> in the <code>cloud-poc</code> pool</li>
 <li>Stops the service, copies files to <code>C:\site</code>, starts it again</li>
@@ -272,12 +256,12 @@ layout: default
 layout: default
 ---
 
-# DAST & Publish
+# DAST
 
 <div class="grid-2">
 
 <div class="card">
-<h3><span class="pill pill-blue">5</span> DAST</h3>
+<h3><span class="pill pill-blue">4</span> DAST</h3>
 <div class="tool-logo mb">
 <img src="/zap.png" alt="OWASP ZAP"/>
 <div><b>OWASP ZAP</b> is already installed on the VM. The pipeline never downloads it.</div>
@@ -285,17 +269,6 @@ layout: default
 <ul>
 <li>Starts ZAP headless, spiders the app, then runs an active scan</li>
 <li>Exports <code>zap.json</code>, <code>zap.xml</code>, and <code>zap.html</code></li>
-</ul>
-</div>
-
-<div class="card">
-<h3><span class="pill pill-blue">6</span> Publish</h3>
-<ul>
-<li>Downloads every scanner's raw artifact</li>
-<li>Merges them into one <code>combined.json</code></li>
-<li>Renders a single-page <b>HTML dashboard</b> with severity cards and tables</li>
-<li>Publishes <code>reports-html</code> plus the per-scanner artifacts</li>
-<li>Always runs, thanks to <code>condition: always()</code></li>
 </ul>
 </div>
 
@@ -310,7 +283,7 @@ layout: default
 <div class="grid-2">
 
 <div class="card">
-<h3><span class="pill pill-green">7</span> Optional and flag-driven</h3>
+<h3><span class="pill pill-green">5</span> Optional and flag-driven</h3>
 <div class="tool-logo mb">
 <img src="/defectdojo.png" alt="DefectDojo"/>
 <div><b>DefectDojo</b> becomes the single source of truth for findings</div>
@@ -329,14 +302,13 @@ layout: default
 <tr><th>Report</th><th>DefectDojo type</th></tr>
 <tr><td><code>trufflehog.json</code></td><td>Trufflehog Scan</td></tr>
 <tr><td><code>semgrep.json</code></td><td>Semgrep JSON Report</td></tr>
-<tr><td><code>msdo.sarif</code></td><td>SARIF</td></tr>
 <tr><td><code>zap.xml</code></td><td>ZAP Scan</td></tr>
 </table>
 </div>
 
 </div>
 
-<div class="tiny mt">All scanners feed one dashboard and one triage backlog, so findings get tracked, assigned, and closed instead of just printed.</div>
+<div class="tiny mt">Each scanner's report is published as its own artifact + optional DefectDojo triage, so findings get tracked, assigned, and closed instead of just printed.</div>
 
 ---
 layout: section
@@ -376,14 +348,14 @@ layout: default
 <li>Anything above the threshold fails the job, so nothing risky ships</li>
 <li>TruffleHog findings always count as high, even unverified ones</li>
 <li>A missing or corrupt report fails too, so a broken scanner cannot pass silently</li>
-<li>Deploy and DAST skip when a gate trips, but Publish still runs</li>
+<li>Deploy and DAST skip when a gate trips, but every scanner still publishes its raw artifact</li>
 </ul>
 </div>
 
 </div>
 
 <div class="quote" style="margin-top:24px;">
-The gates make security a hard requirement. And because Publish always runs, we never lose the evidence.
+The gates make security a hard requirement. And because every scanner publishes its artifact even on failed runs, we never lose the evidence.
 </div>
 
 ---
@@ -434,10 +406,10 @@ layout: default
 | | Before, manual FTP | After, cloud pipelines |
 |---|---|---|
 | **Delivery** | <span class="bad">Hand-built, manually uploaded</span> | <span class="ok">Automated build on every push and PR</span> |
-| **Security** | <span class="bad">None at delivery time</span> | <span class="ok">SAST, MSDO, and DAST, gated on critical/high</span> |
+| **Security** | <span class="bad">None at delivery time</span> | <span class="ok">SAST and DAST, gated on critical/high</span> |
 | **Traceability** | <span class="bad">"It is on the server, I think"</span> | <span class="ok">Every run is versioned and auditable</span> |
 | **Deploy** | <span class="bad">Drag-and-drop, error-prone</span> | <span class="ok">Robocopy to `C:\site`, service-managed, health-probed</span> |
-| **Findings** | <span class="bad">Never tracked centrally</span> | <span class="ok">HTML dashboard, optional DefectDojo triage</span> |
+| **Findings** | <span class="bad">Never tracked centrally</span> | <span class="ok">per-scanner artifacts, optional DefectDojo triage</span> |
 | **Consistency** | <span class="bad">Depends on the person</span> | <span class="ok">The same pipeline for everyone, every time</span> |
 
 ---
@@ -454,7 +426,7 @@ layout: default
 <li><span class="check"></span> <b>Shift-left security</b>: issues get caught before they ship</li>
 <li><span class="check"></span> <b>Faster, safer releases</b>: CI/CD replaces the FTP chore</li>
 <li><span class="check"></span> <b>A full audit trail</b>: who, what, when, and the evidence</li>
-<li><span class="check"></span> <b>One view of risk</b>: dashboard plus central triage</li>
+<li><span class="check"></span> <b>One view of risk</b>: per-scanner artifacts plus central triage</li>
 <li><span class="check"></span> <b>Reusable</b>: onboard more apps with configuration only</li>
 </ul>
 </div>
