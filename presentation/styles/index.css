@@ -1,0 +1,366 @@
+/* ============================================================
+   Cloud Pipelines POC — Slidev theme
+   Inter typeface, Microsoft/Fluent-inspired palette.
+   ============================================================ */
+
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+
+:root {
+  --ms-blue: #0078d4;
+  --ms-blue-dark: #005a9e;
+  --ms-navy: #0d1b2e;
+  --ms-navy-2: #1f3a5f;
+  --ink: #24292f;
+  --muted: #57606a;
+  --bg: #f6f8fa;
+  --card-border: #e4e9f0;
+  --card-shadow: 0 1px 3px rgba(13, 27, 46, 0.08);
+  --green: #107c10;
+  --orange: #d83b01;
+  --red: #c50f1f;
+  --cyan: #50e6ff;
+}
+
+/* ---------- Base ---------- */
+.slidev-layout {
+  font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont,
+    Roboto, 'Helvetica Neue', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  letter-spacing: 0.1px;
+}
+
+.slidev-layout h1 {
+  color: var(--ms-navy);
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  font-size: 42px !important;
+  margin: 0 0 14px 0 !important;
+}
+
+.slidev-layout h2 {
+  color: var(--ms-blue);
+  font-size: 32px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--ms-blue);
+  display: inline-block;
+}
+
+.slidev-layout h3 {
+  color: var(--ms-navy);
+  font-size: 22px;
+  font-weight: 600;
+  margin: 14px 0 6px 0;
+}
+
+.slidev-layout p,
+.slidev-layout li {
+  font-size: 19px;
+  line-height: 1.45;
+}
+
+.slidev-layout li {
+  margin: 4px 0;
+}
+
+.slidev-layout code {
+  background: #eef2f6;
+  color: #e1ff00;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.9em;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* ---------- Utility classes ---------- */
+.center {
+  text-align: center;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 18px !important;
+}
+
+.tiny {
+  font-size: 15px !important;
+  color: var(--muted);
+}
+
+.accent {
+  color: var(--ms-blue);
+}
+
+.ok {
+  color: var(--green);
+}
+
+.bad {
+  color: var(--red);
+}
+
+/* glyph-independent checkmark (drawn with borders) */
+.check {
+  display: inline-block;
+  width: 12px;
+  height: 7px;
+  border-left: 3px solid var(--green);
+  border-bottom: 3px solid var(--green);
+  transform: rotate(-45deg);
+  margin: 0 8px 3px 0;
+}
+
+.mt {
+  margin-top: 18px;
+}
+
+.mb {
+  margin-bottom: 12px;
+}
+
+/* ---------- Grids ---------- */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  margin-top: 14px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 18px;
+  margin-top: 14px;
+}
+
+/* ---------- Cards ---------- */
+.card {
+  background: #ffffff;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  padding: 16px 18px;
+  box-shadow: var(--card-shadow);
+}
+
+.card h3 {
+  margin-top: 0;
+  font-size: 19px;
+  color: var(--ms-navy);
+}
+
+.card p,
+.card li {
+  font-size: 17px !important;
+  line-height: 1.42;
+}
+
+.card ul {
+  padding-left: 18px;
+  margin: 4px 0;
+}
+
+/* ---------- Pills & chips ---------- */
+.pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin-right: 6px;
+}
+
+.pill-blue {
+  background: var(--ms-blue);
+}
+
+.pill-green {
+  background: var(--green);
+}
+
+.pill-orange {
+  background: var(--orange);
+}
+
+.pill-navy {
+  background: var(--ms-navy-2);
+}
+
+.pill-slate {
+  background: var(--muted);
+}
+
+.chip {
+  display: inline-block;
+  background: #eaf2fb;
+  color: var(--ms-blue-dark);
+  border: 1px solid #cfe3f5;
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-size: 15px;
+  font-weight: 500;
+  margin: 3px 4px 3px 0;
+}
+
+/* ---------- Tool logos ---------- */
+.tool-logo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.tool-logo img {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid #dde3ea;
+  background: #fff;
+  object-fit: contain;
+  padding: 4px;
+}
+
+/* ---------- Quote ---------- */
+.quote {
+  font-size: 23px;
+  color: var(--ms-navy);
+  padding-left: 18px;
+  margin-top: 18px;
+}
+
+/* ---------- Tables ---------- */
+.slidev-layout table {
+  font-size: 16px;
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 10px;
+  display: table;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.slidev-layout th {
+  background: #eef3f8;
+  color: var(--ms-navy-2);
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--ms-blue);
+}
+
+.slidev-layout td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--card-border);
+  background: #ffffff;
+}
+
+.slidev-layout tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+/* ---------- Divider / section slides ---------- */
+.slidev-layout.section,
+.slidev-layout.cover {
+  background: linear-gradient(140deg, #0d1b2e 0%, #123a63 55%, #0a6cd6 130%);
+  color: #ffffff;
+}
+
+.slidev-layout.section h1,
+.slidev-layout.cover h1 {
+  color: #ffffff;
+}
+
+.slidev-layout.section h2,
+.slidev-layout.cover h2 {
+  color: var(--cyan);
+  border-bottom: none;
+}
+
+.slidev-layout.section h3,
+.slidev-layout.cover h3 {
+  color: #50e6ff;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.rule {
+  width: 100%;
+  height: 4px;
+  background: var(--cyan);
+  border-radius: 2px;
+  margin: 18px 0;
+}
+
+/* ---------- Cover slide ---------- */
+.cover-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+}
+
+.cover-inner h1 {
+  font-size: 48px;
+  margin: 0;
+  color: #fff;
+  font-weight: 600;
+}
+
+.cover-inner h2 {
+  color: var(--cyan);
+  font-size: 24px;
+  letter-spacing: 0.5px;
+  border: none;
+}
+
+.cover-byline {
+  color: #d7e3f0;
+  font-size: 20px;
+}
+
+.logos {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.logos img {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #fff;
+  padding: 5px;
+  object-fit: contain;
+}
+
+/* ---------- Flow diagram ---------- */
+.flow-img {
+  width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  margin-top: 4px;
+}
+
+/* keep the flow diagram slide compact */
+#slide-7 .flow-img {
+  max-height: 300px;
+}
+
+/* compact highlight cards under the flow diagram */
+.highlight-card {
+  background: #ffffff;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  box-shadow: var(--card-shadow);
+  font-size: 15px !important;
+}

@@ -1,0 +1,19 @@
+{
+  "name": "cloud-pipelines-poc-slides",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "slidev",
+    "build": "slidev build",
+    "export": "slidev export --output dist/cloud-pipelines-poc.pdf",
+    "export:png": "slidev export --format png --output dist"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@slidev/cli": "^52.19.0",
+    "@slidev/theme-default": "^0.25.0"
+  },
+  "devDependencies": {
+    "playwright-chromium": "^1.62.1"
+  }
+}

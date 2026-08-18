@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 560" font-family="Inter, Segoe UI, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4a5d70"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0078d4"/>
+    </marker>
+  </defs>
+
+  <!-- background -->
+  <rect width="1320" height="560" fill="#f5f7fa"/>
+
+  <!-- title -->
+  <text x="660" y="52" text-anchor="middle" font-size="26" font-weight="700" fill="#0b1b2b">End-to-end pipeline</text>
+
+  <!-- row 1: Build SAST MSDO Deploy DAST -->
+  <!-- Build -->
+  <rect x="40" y="110" width="160" height="70" rx="12" fill="#eaf2fb" stroke="#0078d4" stroke-width="2.5"/>
+  <text x="120" y="142" text-anchor="middle" font-size="20" font-weight="700" fill="#0b1b2b">Build</text>
+  <text x="120" y="164" text-anchor="middle" font-size="13" fill="#5c6f82">dotnet publish → drop</text>
+
+  <!-- SAST -->
+  <rect x="300" y="110" width="160" height="70" rx="12" fill="#eaf2fb" stroke="#0078d4" stroke-width="2.5"/>
+  <text x="380" y="142" text-anchor="middle" font-size="20" font-weight="700" fill="#0b1b2b">SAST</text>
+  <text x="380" y="164" text-anchor="middle" font-size="13" fill="#5c6f82">TruffleHog + Semgrep</text>
+
+  <!-- MSDO -->
+  <rect x="560" y="110" width="160" height="70" rx="12" fill="#eaf2fb" stroke="#0078d4" stroke-width="2.5"/>
+  <text x="640" y="142" text-anchor="middle" font-size="20" font-weight="700" fill="#0b1b2b">MSDO</text>
+  <text x="640" y="164" text-anchor="middle" font-size="13" fill="#5c6f82">Microsoft Security DevOps</text>
+
+  <!-- Deploy -->
+  <rect x="820" y="110" width="160" height="70" rx="12" fill="#eaf2fb" stroke="#0078d4" stroke-width="2.5"/>
+  <text x="900" y="142" text-anchor="middle" font-size="20" font-weight="700" fill="#0b1b2b">Deploy</text>
+  <text x="900" y="164" text-anchor="middle" font-size="13" fill="#5c6f82">Windows VM · C:\site</text>
+
+  <!-- DAST -->
+  <rect x="1080" y="110" width="160" height="70" rx="12" fill="#eaf2fb" stroke="#0078d4" stroke-width="2.5"/>
+  <text x="1160" y="142" text-anchor="middle" font-size="20" font-weight="700" fill="#0b1b2b">DAST</text>
+  <text x="1160" y="164" text-anchor="middle" font-size="13" fill="#5c6f82">OWASP ZAP</text>
+
+  <!-- row 1 arrows -->
+  <line x1="200" y1="145" x2="296" y2="145" stroke="#4a5d70" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="460" y1="145" x2="556" y2="145" stroke="#4a5d70" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="720" y1="145" x2="816" y2="145" stroke="#4a5d70" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <line x1="980" y1="145" x2="1076" y2="145" stroke="#4a5d70" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <!-- dashed 'always' from SAST to Publish -->
+  <line x1="380" y1="180" x2="380" y2="285" stroke="#d83b01" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+  <text x="392" y="240" font-size="13" fill="#d83b01">always</text>
+
+  <!-- dashed 'always' from MSDO to Publish -->
+  <line x1="640" y1="180" x2="640" y2="285" stroke="#d83b01" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+
+  <!-- dashed 'always' from DAST to Publish -->
+  <line x1="1160" y1="180" x2="1160" y2="285" stroke="#d83b01" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+  <text x="1172" y="240" font-size="13" fill="#d83b01">always</text>
+
+  <!-- row 2: Publish -->
+  <rect x="540" y="285" width="200" height="70" rx="12" fill="#fff4e6" stroke="#d83b01" stroke-width="2.5"/>
+  <text x="640" y="317" text-anchor="middle" font-size="20" font-weight="700" fill="#0b1b2b">Publish</text>
+  <text x="640" y="339" text-anchor="middle" font-size="13" fill="#5c6f82">HTML dashboard · reports</text>
+
+  <!-- DefectDojo -->
+  <rect x="540" y="430" width="200" height="70" rx="12" fill="#eafaf0" stroke="#107c10" stroke-width="2.5"/>
+  <text x="640" y="462" text-anchor="middle" font-size="20" font-weight="700" fill="#0b1b2b">DefectDojo</text>
+  <text x="640" y="484" text-anchor="middle" font-size="13" fill="#5c6f82">central triage (optional)</text>
+
+  <line x1="640" y1="355" x2="640" y2="426" stroke="#4a5d70" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="652" y="398" font-size="13" fill="#107c10">EnableDefectDojo</text>
+
+  <!-- captions -->
+  <text x="120" y="210" text-anchor="middle" font-size="13" fill="#5c6f82">Hosted Linux</text>
+  <text x="380" y="210" text-anchor="middle" font-size="13" fill="#5c6f82">Hosted Linux</text>
+  <text x="640" y="210" text-anchor="middle" font-size="13" fill="#5c6f82">Hosted Windows</text>
+  <text x="900" y="210" text-anchor="middle" font-size="13" fill="#5c6f82">Windows VM</text>
+  <text x="1160" y="210" text-anchor="middle" font-size="13" fill="#5c6f82">Windows VM</text>
+
+  <text x="640" y="540" text-anchor="middle" font-size="13" fill="#5c6f82">Policy gates block critical &amp; high findings · Publish always runs · Reports published as artifacts</text>
+</svg>

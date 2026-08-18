@@ -1,0 +1,5 @@
+node_modules
+dist
+slides-export
+.DS_Store
+*.local
