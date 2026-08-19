@@ -16,7 +16,7 @@ variables:
   - name: AgentImage
     value: ubuntu-latest
 
-  # Python version used by the policy-check script.
+  # Python version used by the report aggregation scripts.
   - name: PythonVersion
     value: '3.11'
 

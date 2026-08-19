@@ -1,5 +1,5 @@
 # Intentional security test fixtures. These contain fake secrets and
-# deliberately vulnerable code used to validate the SAST stages.
+# deliberately vulnerable code used to validate the SAST/MSDO stages.
 # They are NOT pushed to GitHub (GitHub blocks/defects on malicious content),
 # so they live in a git-ignored folder. Copy .hidden/security-tests onto a
 # scanner workdir if you need the pipeline to scan them.
@@ -18,11 +18,10 @@ obj/
 __pycache__/
 *.pyc
 
-# Mermaid diagram sources (rendered/committed separately, kept out of git).
-diagrams/
-
 # IDE / OS
 .vs/
 .idea/
 .DS_Store
 Thumbs.db
+
+sample/

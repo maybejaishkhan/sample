@@ -44,7 +44,7 @@ variables:
   # Optional stage that uploads the scanner reports to a DefectDojo instance
   # at the end of the pipeline. Set to 'true' to enable it.
   - name: EnableDefectDojo
-    value: false
+    value: true
 
   # Agent pool for the DefectDojo job (a literal pool name, not a macro - Azure
   # does not re-expand nested variables). Use 'ubuntu-latest' for a hosted agent
@@ -62,19 +62,14 @@ variables:
   # Base URL of the DefectDojo instance, e.g. http://<server>:<port>.
   # Override per environment; never hardcode in a shared variable file.
   - name: DefectDojoUrl
-    value: ''
+    value: 'http://defect-dojo.eastus2.cloudapp.azure.com'
 
-  # DefectDojo API v2 token (user menu -> API v2 Token). Override with a
-  # secret (variable group / library secret); never commit a real token.
-  - name: DefectDojoApiToken
-    value: ''
-
-  # Product / product type / engagement to import into. The import script
-  # creates them via the API on first import when they do not exist yet.
+  # Product / product type / engagement to import into. DefectDojo
+  # auto-creates them when they do not exist yet.
   - name: DefectDojoProductName
-    value: sample-app
+    value: pipeline-demo
   - name: DefectDojoProductTypeName
-    value: ''
+    value: 'demo-project'
   - name: DefectDojoEngagementName
     value: CI-CD
 
@@ -87,8 +82,8 @@ variables:
 
   # ---------------------------------------------------------- Policy gates
   # If a scanner finds findings at these severities the job FAILS and later
-  # stages (Deploy/DAST) are skipped. The DefectDojo stage (when enabled) still
-  # runs via `succeededOrFailed()` so whatever the scans produced is uploaded.
+  # stages (Deploy/DAST) are skipped. The DefectDojo stage still runs via
+  # `succeededOrFailed()` so reports are never lost.
   #
   # TruffleHog findings are always mapped to high (verified or not), so with
   # FailOnHigh=true even unverified secrets fail the build - TruffleHog's own
@@ -113,8 +108,8 @@ variables:
   - name: ZapHtmlReport
     value: zap.html
 
-  # Names of the pipeline artifacts published by each scanner job. The
-  # DefectDojo stage downloads these by name, so keep them in sync if renamed.
+  # Names of the pipeline artifacts published by each scanner job. The DefectDojo
+  # stage downloads these by name, so keep them in sync if renamed.
   - name: TrufflehogArtifact
     value: trufflehog
   - name: SemgrepArtifact

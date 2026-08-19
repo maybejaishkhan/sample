@@ -33,6 +33,7 @@ variables:
   - template: variables/build.yml
   - template: variables/security.yml
   - template: variables/deployment.yml
+  - group: cloud-poc-variable-group
 
 # ==============================================================================
 # Stages

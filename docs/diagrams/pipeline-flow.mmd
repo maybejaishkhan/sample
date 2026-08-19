@@ -1,0 +1,6 @@
+flowchart LR
+    A[Build] --> B[SAST] --> D[Deploy] --> E[DAST]
+    B -->|succeededOrFailed| G
+    E -->|succeededOrFailed| G
+    G[DefectDojo]:::opt
+    classDef opt stroke-dasharray: 5 5;
